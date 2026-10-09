@@ -1,0 +1,13 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'com.mumu.health'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.mumu.health'
+        minSdk 26
+        targetSdk 35
+        versionCode 4
+        versionName '1.0.3'
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}

@@ -1,0 +1,9 @@
+.tools/
+build/
+node_modules/
+test-results/
+local.properties
+*.keystore
+*.jks
+*.log
+.DS_Store
