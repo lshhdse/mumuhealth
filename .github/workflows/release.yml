@@ -1,0 +1,57 @@
+name: Publish latest Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install dependencies and check records
+        run: |
+          npm ci
+          npm test
+      - name: Install Android build tools
+        shell: pwsh
+        run: ./tools/setup-android.ps1
+      - name: Restore existing signing key
+        shell: pwsh
+        env:
+          MUMU_SIGNING_KEY_BASE64: ${{ secrets.MUMU_SIGNING_KEY_BASE64 }}
+          MUMU_SIGN_PASSWORD: ${{ secrets.MUMU_SIGN_PASSWORD }}
+        run: |
+          if (!$env:MUMU_SIGNING_KEY_BASE64 -or !$env:MUMU_SIGN_PASSWORD) { throw '请先配置原有签名文件和密码的 GitHub Actions Secrets。' }
+          $signing = Join-Path $PWD '.tools/signing'
+          New-Item -ItemType Directory -Force -Path $signing | Out-Null
+          [System.IO.File]::WriteAllBytes((Join-Path $signing 'mumu-personal.jks'), [Convert]::FromBase64String($env:MUMU_SIGNING_KEY_BASE64))
+      - name: Build and verify signed APK
+        shell: pwsh
+        env:
+          MUMU_SIGN_PASSWORD: ${{ secrets.MUMU_SIGN_PASSWORD }}
+        run: |
+          $code = 100000 + [int]$env:GITHUB_RUN_NUMBER
+          $version = "1.0.4.$env:GITHUB_RUN_NUMBER"
+          ./tools/build-android.ps1 -JdkPath $env:JAVA_HOME -VersionCode $code -VersionName $version -RequireExistingSigning
+          Copy-Item -LiteralPath "build/mumu-health-v$version.apk" -Destination "build/mumu-health-$code.apk"
+      - name: Publish newest release and remove older versions
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node tools/publish-latest.mjs

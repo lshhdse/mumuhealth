@@ -101,6 +101,29 @@ try {
   await nativePage.getByLabel('食物 2 热量').fill('120'); await nativePage.locator('[data-action="save-meal"]').click(); await nativePage.waitForFunction(()=>document.querySelector('.summary-card')?.textContent.includes('270')); assert.match(await nativePage.locator('.summary-card').innerText(),/270/);
   assert.equal(await nativePage.evaluate(()=>window.fixtureRequests.filter(request=>request.method==='saveMeal').length),2);
   console.log('PASS: 文字照片先保存、后台更新摘要与明细、手动修正热量；未调用真实 AI 服务。');
+  const updateContext = await browser.newContext({viewport:{width:393,height:852},locale:'zh-CN',timezoneId:'Asia/Shanghai'});
+  await updateContext.addInitScript(()=>{
+    window.fixtureUpdates=[];
+    window.NativeBridge={call(method,payload,id){
+      window.fixtureUpdates.push(method);
+      const result = method==='init' ? {data:{version:1,meals:[],workouts:[],templates:[]},settings:{baseUrl:'https://example.test/v1',textModel:'text',visionModel:'vision',hasKey:false},native:true,appVersion:'1.0.4'} :
+        method==='checkUpdate' ? {status:'available',available:true,versionCode:100002,versionName:'沐沐健康 1.0.4.2'} :
+        method==='installUpdate' ? {status:'permission'} : true;
+      setTimeout(()=>window.nativeResult(JSON.stringify({id,result,error:null})),10);
+    }};
+  });
+  const updatePage = await updateContext.newPage(); updatePage.on('pageerror',error=>errors.push(error.message)); await updatePage.goto(root);
+  await updatePage.getByRole('heading',{name:'发现新版本'}).waitFor();
+  await updatePage.locator('[data-action="confirm-no"]').click();
+  await updatePage.locator('[data-action="navigate"][data-page="settings"]').click();
+  await updatePage.getByText('发现新版本 · 沐沐健康 1.0.4.2').waitFor();
+  await updatePage.locator('[data-action="check-update"]').click();
+  await updatePage.getByRole('heading',{name:'发现新版本'}).waitFor();
+  await updatePage.locator('[data-action="confirm-yes"]').click();
+  await updatePage.waitForFunction(()=>window.fixtureUpdates.includes('installUpdate'));
+  assert.equal(await updatePage.evaluate(()=>window.fixtureUpdates.filter(method=>method==='checkUpdate').length),2);
+  await updateContext.close();
+  console.log('PASS: 启动发现更新、稍后再说、我的内再次检查和立即更新。');
   const previewContext = await browser.newContext({viewport:{width:393,height:852},locale:'zh-CN',timezoneId:'Asia/Shanghai'});
   const previewPage = await previewContext.newPage(); previewPage.on('pageerror',error=>errors.push(error.message)); await previewPage.goto(root);
   await previewPage.getByRole('button',{name:'添加早餐',exact:true}).click(); await previewPage.locator('#meal-description').fill('一碗泡面'); await previewPage.locator('[data-action="save-meal"]').click();

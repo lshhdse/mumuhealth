@@ -1,10 +1,14 @@
 param(
     [string]$JdkPath = 'D:\work\Java\ms-17.0.19',
-    [switch]$Debug
+    [switch]$Debug,
+    [int]$VersionCode = 5,
+    [string]$VersionName = '',
+    [switch]$RequireExistingSigning
 )
 $ErrorActionPreference = 'Stop'
 $projectDir = Split-Path -Parent $PSScriptRoot
-$appVersion = (Get-Content -LiteralPath (Join-Path $projectDir 'package.json') -Raw | ConvertFrom-Json).version
+$appVersion = if ($VersionName) { $VersionName } else { (Get-Content -LiteralPath (Join-Path $projectDir 'package.json') -Raw | ConvertFrom-Json).version }
+if ($VersionCode -lt 1) { throw '版本编号必须大于 0。' }
 Push-Location $projectDir
 try { & node (Join-Path $PSScriptRoot 'build-web.mjs'); if ($LASTEXITCODE -ne 0) { throw '界面打包失败。' } }
 finally { Pop-Location }
@@ -37,7 +41,7 @@ try {
     $env:JAVA_HOME = $JdkPath
     $env:Path = (Join-Path $JdkPath 'bin') + ';' + $env:Path
     $unsigned = Join-Path $outputDir 'app-unsigned.apk'
-    Invoke-BuildTool $aapt @('package','-f','-m','-J',$generatedDir,'-M',$manifest,'-S',(Join-Path $projectDir 'app\src\main\res'),'-A',(Join-Path $projectDir 'app\src\main\assets'),'-I',$androidJar,'-F',$unsigned,'--min-sdk-version','26','--target-sdk-version','35','--version-code','4','--version-name',$appVersion)
+    Invoke-BuildTool $aapt @('package','-f','-m','-J',$generatedDir,'-M',$manifest,'-S',(Join-Path $projectDir 'app\src\main\res'),'-A',(Join-Path $projectDir 'app\src\main\assets'),'-I',$androidJar,'-F',$unsigned,'--min-sdk-version','26','--target-sdk-version','35','--version-code',([string]$VersionCode),'--version-name',$appVersion)
     $sourceFiles = @(Get-ChildItem -LiteralPath (Join-Path $projectDir 'app\src\main\java') -Recurse -Filter '*.java') + @(Get-ChildItem -LiteralPath $generatedDir -Recurse -Filter '*.java')
     if ($Debug) { $sourceFiles += @(Get-ChildItem -LiteralPath (Join-Path $projectDir 'tests\android') -Filter '*.java') }
     $sourceList = Join-Path $outputDir 'sources.txt'
@@ -50,13 +54,17 @@ try {
     $aligned = Join-Path $outputDir 'app-aligned.apk'
     Invoke-BuildTool (Join-Path $buildTools 'zipalign.exe') @('-f','4',$unsigned,$aligned)
     $credentialsFile = Join-Path $signingDir 'credentials.json'
-    if (!(Test-Path -LiteralPath $credentialsFile)) {
+    $keystore = Join-Path $signingDir 'mumu-personal.jks'
+    if ($RequireExistingSigning -and !(Test-Path -LiteralPath $keystore)) { throw '缺少原有签名文件，拒绝生成新签名。' }
+    if ($RequireExistingSigning -and !$env:MUMU_SIGN_PASSWORD) { throw '缺少原有签名密码，拒绝发布。' }
+    if (!$RequireExistingSigning -and !(Test-Path -LiteralPath $credentialsFile)) {
         $signingPassword = [Guid]::NewGuid().ToString('N') + [Guid]::NewGuid().ToString('N')
         [System.IO.File]::WriteAllText($credentialsFile, (@{ password = $signingPassword } | ConvertTo-Json), [System.Text.UTF8Encoding]::new($false))
     }
-    $credentials = Get-Content -LiteralPath $credentialsFile -Raw | ConvertFrom-Json
-    $env:MUMU_SIGN_PASSWORD = $credentials.password
-    $keystore = Join-Path $signingDir 'mumu-personal.jks'
+    if (!$env:MUMU_SIGN_PASSWORD) {
+        $credentials = Get-Content -LiteralPath $credentialsFile -Raw | ConvertFrom-Json
+        $env:MUMU_SIGN_PASSWORD = $credentials.password
+    }
     if (!(Test-Path -LiteralPath $keystore)) {
         Invoke-BuildTool (Join-Path $JdkPath 'bin\keytool.exe') @('-genkeypair','-keystore',$keystore,'-alias','mumu','-keyalg','RSA','-keysize','2048','-validity','10000','-storepass:env','MUMU_SIGN_PASSWORD','-keypass:env','MUMU_SIGN_PASSWORD','-dname','CN=Mumu Health, O=Personal, C=CN')
     }
@@ -64,6 +72,10 @@ try {
     $apk = Join-Path $outputDir $apkName
     Invoke-BuildTool (Join-Path $buildTools 'apksigner.bat') @('sign','--ks',$keystore,'--ks-key-alias','mumu','--ks-pass','env:MUMU_SIGN_PASSWORD','--key-pass','env:MUMU_SIGN_PASSWORD','--out',$apk,$aligned)
     Invoke-BuildTool (Join-Path $buildTools 'apksigner.bat') @('verify','--verbose',$apk)
+    if (!$Debug) {
+        Get-ChildItem -LiteralPath $outputDir -Filter 'mumu-health-v*.apk' -File |
+            Where-Object { $_.FullName -ne $apk } | Remove-Item -Force
+    }
     Write-Output ('APK: ' + $apk)
     Write-Output ('SHA256: ' + (Get-FileHash -LiteralPath $apk -Algorithm SHA256).Hash)
 } finally {

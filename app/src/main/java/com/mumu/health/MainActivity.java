@@ -38,6 +38,7 @@ public class MainActivity extends Activity {
     private JSONObject pendingImport;
     private String bootError;
     private volatile boolean closing;
+    private volatile boolean installingUpdate;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -138,7 +139,7 @@ public class MainActivity extends Activity {
                     if (bootError != null) throw new Exception(bootError);
                     JSONObject input = new JSONObject(payload);
                     switch (method) {
-                        case "init": reply(id, new JSONObject().put("data", records.snapshot()).put("settings", settings.publicSettings()).put("native", true), null); schedulePendingMealAnalyses(); break;
+                        case "init": reply(id, new JSONObject().put("data", records.snapshot()).put("settings", settings.publicSettings()).put("native", true).put("appVersion", getPackageManager().getPackageInfo(getPackageName(), 0).versionName), null); schedulePendingMealAnalyses(); break;
                         case "saveMeal": {
                             JSONObject meal = records.save("meals", input);
                             reply(id, meal, null);
@@ -154,6 +155,27 @@ public class MainActivity extends Activity {
                             records.delete(kind, input.getString("id")); reply(id, true, null); break;
                         }
                         case "settings": reply(id, settings.save(input), null); break;
+                        case "checkUpdate": reply(id, UpdateClient.check(MainActivity.this), null); break;
+                        case "installUpdate": {
+                            if (installingUpdate) throw new Exception("更新正在准备中，请稍候。");
+                            installingUpdate = true;
+                            try {
+                                if (!getPackageManager().canRequestPackageInstalls()) {
+                                    runOnUiThread(() -> {
+                                        try { startActivity(UpdateClient.permissionIntent(MainActivity.this)); reply(id, new JSONObject().put("status", "permission"), null); }
+                                        catch (Exception e) { reply(id, null, "无法打开安装权限设置。"); }
+                                    });
+                                } else {
+                                    UpdateClient.Release release = UpdateClient.latest();
+                                    UpdateClient.downloadAndVerify(MainActivity.this, release);
+                                    runOnUiThread(() -> {
+                                        try { startActivity(UpdateClient.installerIntent()); reply(id, new JSONObject().put("status", "installer"), null); }
+                                        catch (Exception e) { reply(id, null, "无法打开系统安装界面。"); }
+                                    });
+                                }
+                            } finally { installingUpdate = false; }
+                            break;
+                        }
                         case "testAi": reply(id, AiClient.test(settings), null); break;
                         case "analyze": {
                             String description = RecordStore.text(input, "description", 3000), photo = RecordStore.text(input, "photo", 80);

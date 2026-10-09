@@ -4,7 +4,7 @@
 
 ## 安装与使用
 
-安装包：`build/mumu-health-v1.0.3.apk`。发送到安卓手机后打开，按手机提示允许该来源安装。支持 Android 8.0 及以上；请保持 Android System WebView 更新。新版沿用原签名，可覆盖安装并保留已有记录与 AI 设置。
+安装包：`build/mumu-health-v1.0.4.apk`。发送到安卓手机后打开，按手机提示允许该来源安装。支持 Android 8.0 及以上；请保持 Android System WebView 更新。新版沿用原签名，可覆盖安装并保留已有记录与 AI 设置。
 
 1. 打开「我的」，填写服务地址、API Key、文字模型与图片模型，点击「保存设置」。
 2. 可点击「测试文字连接」检查文字模型。图片模型是否可用，需要通过实际图片识别确认。
@@ -46,6 +46,24 @@ AI 热量属于估算。食物份量、做法和用油会影响结果；点开�
 「从备份恢复」选择原备份文件后，APP 会展示记录数量并要求确认。恢复将替换当前记录，先导出当前数据。恢复时会为照片生成新文件名，失败不会覆盖原记录或原照片。
 
 卸载 APP 会清除手机上的记录。个人使用没有云端同步，换手机前请导出备份。保存需要 AI 估算的文字或照片后，本次内容会发送给所配置的服务；手动填写食物热量时不发送。
+
+## 从 GitHub 更新
+
+安装本版后，APP 每次打开会检查仓库的最新 GitHub Release。发现更高版本会提示「立即更新 / 稍后再说」；取消后仍可在「我的 → 软件更新」检查并安装。首次安装本版需要手动把 `build/mumu-health-v1.0.4.apk` 覆盖安装到手机，旧版没有内置更新检查。下载后 APP 会校验文件大小、SHA-256、应用包名、版本号及与当前 APP 相同的签名，再调用安卓系统安装界面。首次更新可能需要授权此 APP 安装未知来源应用；授权后返回「我的」再点「立即更新」。更新过程中手机需要能访问公开的 GitHub Release。
+
+`.github/workflows/release.yml` 在 `main` 每次推送后构建一个签名 APK，发布为唯一的最新 Release；**新版本成功发布后**删除旧 Release 和对应标签，因此 GitHub 只保留当前安装包。失败时保留此前可用的版本。此工作流需要在仓库 `Settings → Secrets and variables → Actions` 配置两个 Repository secrets：
+
+- `MUMU_SIGNING_KEY_BASE64`：当前 `.tools/signing/mumu-personal.jks` 文件的 Base64 内容。
+- `MUMU_SIGN_PASSWORD`：当前 `.tools/signing/credentials.json` 中的 `password`。
+
+这两个值必须来自已安装版本使用的原签名，不能重新生成，否则安卓无法覆盖安装且本地数据会受到影响。Windows PowerShell 可分别运行以下命令，将值复制到剪贴板后立即粘贴到相应 Secret；不要提交或分享输出：
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes((Resolve-Path '.tools/signing/mumu-personal.jks'))) | Set-Clipboard
+(Get-Content '.tools/signing/credentials.json' -Raw | ConvertFrom-Json).password | Set-Clipboard
+```
+
+仓库必须公开，手机才能无需 GitHub 登录读取版本和下载 APK。仓库 Actions 工作流需要 `contents: write` 权限；工作流已声明该权限。只有修改 `main` 并推送才触发自动发布，单纯上传 APK 或改动其他分支不会触发。发布状态可在 GitHub 的 Actions 页面查看。
 
 ## 开发
 
@@ -91,8 +109,10 @@ adb shell am instrument -w com.mumu.health/com.mumu.health.TestInstrumentation
 ## 本次验证状态
 
 - 已完成：Java 编译、安卓资源与 DEX 打包、APK 签名验证、12 项记录规则测试和浏览器操作测试。
+- 已完成：启动更新提示、「我的」内手动检查与再次更新的界面测试；发布脚本与仅保留最新 Release 的工作流已加入。
 - 已完成：今天、历史、我的、饮食详情、训练与模板编辑采用统一的浅灰分组清单样式；320–430px 手机宽度已检查。
 - 已完成：饮食即时保存、后台分析回填、简洁摘要与明细、失败重试、手动修改、历史补录、未知热量汇总、草稿恢复、有氧/力量记录、设置校验和 320–430px 页面宽度测试。
 - 新增检查：固定周内选择日期、整周前后切换、混合多运动记录的统一校验、单条修改/删除、模板增删改与重载持久化、模板带入，以及模板和训练副本互不影响。
 - 尚未完成：安卓模拟器/真机运行与上述原生测试。当前电脑未开启硬件虚拟化，模拟器软件运行也未能启动。
+- 尚未完成：GitHub Actions 实际运行与手机端在线更新联调；须先在仓库配置原签名 Secrets 并完成一次推送。
 - 尚未完成：真实 AI 服务联调，需在手机中填写你自己的密钥，测试文字连接与实际图片识别。

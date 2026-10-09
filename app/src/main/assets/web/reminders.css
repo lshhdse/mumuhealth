@@ -220,6 +220,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .settings-action + .settings-action { border-color: #ededf0; }
 .settings-action .icon { color: #007aff; }
 .settings-action .chevron { color: #c2c2c7; }
+.update-button { width: 100%; margin-top: 10px; }
 .settings-about { color: #a1a1a7; }
 .field-label { color: #48484a; font-size: 11px; font-weight: 650; }
 .field-hint, .form-note, .sheet-sublabel { color: #8e8e93; }

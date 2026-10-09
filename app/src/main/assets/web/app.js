@@ -29,7 +29,10 @@ const icon = (name, cls = '') => `<svg viewBox="0 0 24 24" class="icon ${cls}" a
 const newToken = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
 const main = document.querySelector('#main');
 const overlay = document.querySelector('#overlay');
-let state = { page: 'today', date: localDate(), data: { version: 1, meals: [], workouts: [], templates: [] }, settings: {}, native: false };
+let state = { page: 'today', date: localDate(), data: { version: 1, meals: [], workouts: [], templates: [] }, settings: {}, native: false, appVersion: '1.0.4' };
+let updateState = { status: 'idle', available: false };
+let dismissedUpdate = 0;
+let installingUpdate = false;
 let editor = null, busy = false, toastTimer, requestSeq = 0, confirmResolve;
 const pending = new Map();
 window.nativeResult = json => {
@@ -80,7 +83,9 @@ function previewData(recoverPending = false) {
   return data;
 }
 async function previewCall(method, payload) {
-  if (method === 'init') return { data: previewData(true), settings: previewConfig, native: false };
+  if (method === 'init') return { data: previewData(true), settings: previewConfig, native: false, appVersion: '1.0.4' };
+  if (method === 'checkUpdate') return { status: 'preview', available: false };
+  if (method === 'installUpdate') throw new Error('请在安卓 APP 中安装更新。');
   if (method === 'saveMeal' || method === 'saveWorkout') {
     const data = previewData(), kind = method === 'saveMeal' ? 'meals' : 'workouts';
     const item = { ...payload, id: payload.id || newToken(), updatedAt: Date.now() };
@@ -187,7 +192,36 @@ function renderHistory() {
 function renderSettings() {
   const settings = state.settings;
   const days = new Set([...state.data.meals,...state.data.workouts].map(record => record.date)).size;
-  return `${titleBar()}<div class="settings-intro"><span class="brand-mark">${icon('leaf')}</span><h1>我的</h1><p>偏好设置与本地记录</p></div><div class="stats-row"><div class="stat-cell"><strong>${days}</strong><span>记录天数</span></div><div class="stat-cell"><strong>${state.data.meals.length}</strong><span>饮食记录</span></div><div class="stat-cell"><strong>${state.data.workouts.length}</strong><span>训练记录</span></div></div>${state.native ? '' : '<p class="preview-notice">浏览器仅用于界面预览。密钥不会保存在此预览中，真实 AI 请在安卓 APP 中配置。</p>'}<section class="settings-card"><div class="card-title"><h2>AI 饮食助手</h2><span class="status-pill ${settings.hasKey ? '' : 'off'}">${settings.hasKey ? '已填写密钥' : '待配置'}</span></div><label class="field"><span class="field-label">服务地址</span><input id="base-url" type="url" inputmode="url" spellcheck="false" autocapitalize="off" value="${e(settings.baseUrl)}" placeholder="https://…/v1"><span class="field-hint">支持 Chat Completions 格式的 HTTPS 接口。百炼也可填写你所在业务空间的专属地址。</span></label><label class="field"><span class="field-label">API Key</span><span class="key-row"><input id="api-key" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="${settings.hasKey ? '已安全保存，留空保持原密钥' : '填写你自己的密钥'}"><button data-action="toggle-key" aria-label="显示或隐藏新输入的密钥">${icon('eye')}</button></span><span class="field-hint">在手机上加密保存；更换服务时，请同时填写对应的新密钥。</span></label><div class="field-row"><label class="field"><span class="field-label">文字模型</span><input id="text-model" value="${e(settings.textModel)}" spellcheck="false" autocapitalize="off"></label><label class="field"><span class="field-label">图片模型</span><input id="vision-model" value="${e(settings.visionModel)}" spellcheck="false" autocapitalize="off"></label></div><p class="field-hint">图片模型需要支持识图。默认预填百炼模型，其他服务请修改名称。</p><div id="settings-error" class="error" role="alert"></div><div class="button-row"><button class="primary" data-action="save-settings">保存设置</button><button class="secondary" data-action="test-ai">测试文字连接</button></div><p class="privacy-line">${icon('shield')}保存文字或照片后，会将本次内容发送给你配置的 AI 服务进行估算。手动填写热量时不会发送。请求会消耗该服务的额度。</p><div class="button-row"><button class="text-button" data-action="help">百炼密钥说明 ↗</button>${settings.hasKey ? '<button class="danger-text" data-action="clear-key">清除已保存的密钥</button>' : ''}</div></section><section class="settings-card"><div class="card-title"><h2>力量训练</h2></div><button class="settings-action" data-action="open-templates">${icon('dumbbell')}<span>管理训练模板<small class="field-hint">练腿、练背等固定动作与默认重量</small></span>${icon('arrow','chevron')}</button></section><section class="settings-card"><div class="card-title"><h2>我的数据</h2><span class="status-pill">本地保存</span></div><button class="settings-action" data-action="export">${icon('download')}<span>导出记录与照片</span>${icon('arrow','chevron')}</button><button class="settings-action" data-action="import">${icon('upload')}<span>从备份恢复</span>${icon('arrow','chevron')}</button><p class="field-hint">备份不包含 API Key。卸载 APP 会清除本地记录，换手机前请先导出备份。</p></section><div class="settings-about">沐沐健康 · 1.0.3<br>热量为估算值，可以按实际份量修正。<br>训练只记录，不计算热量差。</div>`;
+  return `${titleBar()}<div class="settings-intro"><span class="brand-mark">${icon('leaf')}</span><h1>我的</h1><p>偏好设置与本地记录</p></div><div class="stats-row"><div class="stat-cell"><strong>${days}</strong><span>记录天数</span></div><div class="stat-cell"><strong>${state.data.meals.length}</strong><span>饮食记录</span></div><div class="stat-cell"><strong>${state.data.workouts.length}</strong><span>训练记录</span></div></div>${state.native ? '' : '<p class="preview-notice">浏览器仅用于界面预览。密钥不会保存在此预览中，真实 AI 请在安卓 APP 中配置。</p>'}<section class="settings-card"><div class="card-title"><h2>AI 饮食助手</h2><span class="status-pill ${settings.hasKey ? '' : 'off'}">${settings.hasKey ? '已填写密钥' : '待配置'}</span></div><label class="field"><span class="field-label">服务地址</span><input id="base-url" type="url" inputmode="url" spellcheck="false" autocapitalize="off" value="${e(settings.baseUrl)}" placeholder="https://…/v1"><span class="field-hint">支持 Chat Completions 格式的 HTTPS 接口。百炼也可填写你所在业务空间的专属地址。</span></label><label class="field"><span class="field-label">API Key</span><span class="key-row"><input id="api-key" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="${settings.hasKey ? '已安全保存，留空保持原密钥' : '填写你自己的密钥'}"><button data-action="toggle-key" aria-label="显示或隐藏新输入的密钥">${icon('eye')}</button></span><span class="field-hint">在手机上加密保存；更换服务时，请同时填写对应的新密钥。</span></label><div class="field-row"><label class="field"><span class="field-label">文字模型</span><input id="text-model" value="${e(settings.textModel)}" spellcheck="false" autocapitalize="off"></label><label class="field"><span class="field-label">图片模型</span><input id="vision-model" value="${e(settings.visionModel)}" spellcheck="false" autocapitalize="off"></label></div><p class="field-hint">图片模型需要支持识图。默认预填百炼模型，其他服务请修改名称。</p><div id="settings-error" class="error" role="alert"></div><div class="button-row"><button class="primary" data-action="save-settings">保存设置</button><button class="secondary" data-action="test-ai">测试文字连接</button></div><p class="privacy-line">${icon('shield')}保存文字或照片后，会将本次内容发送给你配置的 AI 服务进行估算。手动填写热量时不会发送。请求会消耗该服务的额度。</p><div class="button-row"><button class="text-button" data-action="help">百炼密钥说明 ↗</button>${settings.hasKey ? '<button class="danger-text" data-action="clear-key">清除已保存的密钥</button>' : ''}</div></section><section class="settings-card"><div class="card-title"><h2>力量训练</h2></div><button class="settings-action" data-action="open-templates">${icon('dumbbell')}<span>管理训练模板<small class="field-hint">练腿、练背等固定动作与默认重量</small></span>${icon('arrow','chevron')}</button></section>${updateSection()}<section class="settings-card"><div class="card-title"><h2>我的数据</h2><span class="status-pill">本地保存</span></div><button class="settings-action" data-action="export">${icon('download')}<span>导出记录与照片</span>${icon('arrow','chevron')}</button><button class="settings-action" data-action="import">${icon('upload')}<span>从备份恢复</span>${icon('arrow','chevron')}</button><p class="field-hint">备份不包含 API Key。卸载 APP 会清除本地记录，换手机前请先导出备份。</p></section><div class="settings-about">沐沐健康 · ${e(state.appVersion)}<br>热量为估算值，可以按实际份量修正。<br>训练只记录，不计算热量差。</div>`;
+}
+function updateSection() {
+  const status = updateState.available ? `发现新版本 · ${e(updateState.versionName)}` :
+    updateState.status === 'checking' ? '正在检查…' : updateState.status === 'current' ? '已是最新版本' :
+    updateState.status === 'unpublished' ? '暂未发布安装包' : updateState.status === 'preview' ? '仅安卓 APP 可检查' :
+    updateState.status === 'error' ? '检查失败，点此重试' : '点击检查更新';
+  return `<section class="settings-card"><div class="card-title"><h2>软件更新</h2><span class="status-pill ${updateState.available ? '' : 'off'}">${updateState.available ? '有更新' : e(state.appVersion)}</span></div><button class="settings-action" data-action="check-update">${icon('download')}<span>检查更新<small class="field-hint">${status}</small></span>${icon('arrow','chevron')}</button>${updateState.available ? `<button class="primary update-button" data-action="install-update" ${installingUpdate ? 'disabled' : ''}>${installingUpdate ? '正在下载安装包…' : '立即更新'}</button>` : ''}</section>`;
+}
+async function checkUpdate(manual = false) {
+  if (updateState.status === 'checking') return;
+  updateState = { status: 'checking', available: false }; if (state.page === 'settings') render();
+  try {
+    updateState = await call('checkUpdate'); if (state.page === 'settings') render();
+    if (updateState.available && (manual || dismissedUpdate !== updateState.versionCode)) {
+      if (overlay.childElementCount) return;
+      const yes = await confirmDialog('发现新版本', `${updateState.versionName} 已发布。现在下载安装吗？`, false, '稍后再说', '立即更新');
+      if (yes) await installUpdate(); else dismissedUpdate = updateState.versionCode;
+    } else if (manual && !updateState.available) toast(updateState.status === 'current' ? '当前已是最新版本。' : updateState.status === 'preview' ? '请在安卓 APP 中检查更新。' : '暂时没有已发布的新版本。');
+  } catch (error) { updateState = { status: 'error', available: false }; if (state.page === 'settings') render(); if (manual) toast(error.message); }
+}
+async function installUpdate() {
+  if (installingUpdate) return;
+  installingUpdate = true; if (state.page === 'settings') render();
+  toast('正在下载并校验安装包，请稍候…');
+  try {
+    const result = await call('installUpdate');
+    if (result.status === 'permission') toast('请允许安装此来源应用，返回后再次点击“立即更新”。');
+  } catch (error) { toast(error.message); }
+  finally { installingUpdate = false; if (state.page === 'settings') render(); }
 }
 function render() {
   main.innerHTML = state.page === 'today' ? renderToday() : state.page === 'history' ? renderHistory() : renderSettings();
@@ -203,10 +237,10 @@ function closeSheet() {
   if (editor?.kind === 'meal') { collectMeal(); saveDraft(); }
   editor = null; overlay.innerHTML = ''; document.body.classList.remove('modal-open'); render();
 }
-function confirmDialog(title, text, danger = false) {
+function confirmDialog(title, text, danger = false, noLabel = '取消', yesLabel = danger ? '确认' : '继续') {
   return new Promise(resolve => {
     confirmResolve = resolve;
-    overlay.innerHTML = `<div class="overlay dialog-overlay"><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title"><h2 id="confirm-title">${e(title)}</h2><p>${e(text)}</p><div class="button-row"><button class="secondary" data-action="confirm-no">取消</button><button class="primary ${danger ? 'danger' : ''}" data-action="confirm-yes">${danger ? '确认' : '继续'}</button></div></section></div>`;
+    overlay.innerHTML = `<div class="overlay dialog-overlay"><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title"><h2 id="confirm-title">${e(title)}</h2><p>${e(text)}</p><div class="button-row"><button class="secondary" data-action="confirm-no">${e(noLabel)}</button><button class="primary ${danger ? 'danger' : ''}" data-action="confirm-yes">${e(yesLabel)}</button></div></section></div>`;
     document.body.classList.add('modal-open');
   });
 }
@@ -462,6 +496,8 @@ async function action(name, node) {
     case 'export': { busy = true; try { const result = await call('export'); if (result) toast('备份已导出，包含记录与照片。'); } catch (error) { toast(error.message); } finally { busy = false; } break; }
     case 'import': await importBackup(); break;
     case 'help': try { await call('openHelp'); } catch (error) { toast(error.message); } break;
+    case 'check-update': await checkUpdate(true); break;
+    case 'install-update': await installUpdate(); break;
   }
 }
 document.addEventListener('click', event => { const node = event.target.closest('[data-action]'); if (node) { event.preventDefault(); action(node.dataset.action,node).catch(error => { busy = false; toast(error.message || '操作失败，请重试。'); }); } else if (event.target.classList.contains('overlay') && !confirmResolve) closeSheet(); });
@@ -469,6 +505,6 @@ document.addEventListener('input', event => { if (editor?.kind === 'meal') { col
 document.addEventListener('change', event => { if (event.target.id === 'history-date' && event.target.value) { state.date = event.target.value; render(); } });
 window.handleBack = () => { if (busy) { toast('正在处理，请稍候。'); return true; } if (overlay.childElementCount) { closeSheet(); return true; } if (state.page !== 'today') { state.page = 'today'; render(); return true; } return false; };
 (async function init() {
-  try { const initial = await call('init'); Object.assign(state,initial); render(); }
+  try { const initial = await call('init'); Object.assign(state,initial); render(); if (state.native) checkUpdate(); }
   catch (error) { main.innerHTML = `<div class="fatal"><h2>暂时无法读取记录</h2><p>${e(error.message)}<br>请关闭后重新打开 APP。已有文件不会被自动清空。</p></div>`; }
 })();

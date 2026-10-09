@@ -120,6 +120,15 @@ public class TestInstrumentation extends Instrumentation {
             rejects(() -> AiClient.parseEstimate("这不是 JSON"), "拒绝非结构化响应");
             check(AiClient.parseEstimate("{\"foods\":[],\"assumptions\":\"非食物照片\"}").getJSONArray("foods").length() == 0, "非食物照片结果为空");
             rejects(() -> AiClient.test(settings), "没有密钥时不能误报连接成功");
+            JSONObject release = new JSONObject().put("tag_name", "build-100002").put("name", "沐沐健康 1.0.4.2")
+                .put("body", "SHA256: " + new String(new char[64]).replace('\0', 'a'))
+                .put("assets", new JSONArray().put(new JSONObject().put("name", "mumu-health-100002.apk")
+                    .put("browser_download_url", "https://github.com/lshhdse/mumuhealth/releases/download/build-100002/mumu-health-100002.apk")
+                    .put("size", 1234567)));
+            check(UpdateClient.parseRelease(release).code == 100002, "发布信息解析与哈希回退");
+            rejects(() -> UpdateClient.parseRelease(new JSONObject(release.toString()).put("tag_name", "build-100003")), "拒绝版本与下载路径不一致");
+            release.getJSONArray("assets").getJSONObject(0).put("browser_download_url", "https://evil.example/update.apk");
+            rejects(() -> UpdateClient.parseRelease(release), "拒绝非 GitHub 安装包地址");
             Activity activity = startActivitySync(new Intent(getTargetContext(), MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             Bitmap photo = Bitmap.createBitmap(2400, 1800, Bitmap.Config.ARGB_8888);
             File source = new File(getTargetContext().getCacheDir(), "native-photo-test.jpg");
