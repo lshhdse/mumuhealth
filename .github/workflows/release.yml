@@ -48,7 +48,8 @@ jobs:
           MUMU_SIGN_PASSWORD: ${{ secrets.MUMU_SIGN_PASSWORD }}
         run: |
           $code = 100000 + [int]$env:GITHUB_RUN_NUMBER
-          $version = "1.0.4.$env:GITHUB_RUN_NUMBER"
+          $baseVersion = (Get-Content -LiteralPath 'package.json' -Raw | ConvertFrom-Json).version
+          $version = "$baseVersion.$env:GITHUB_RUN_NUMBER"
           ./tools/build-android.ps1 -JdkPath $env:JAVA_HOME -VersionCode $code -VersionName $version -RequireExistingSigning
           Copy-Item -LiteralPath "build/mumu-health-v$version.apk" -Destination "build/mumu-health-$code.apk"
       - name: Publish newest release and remove older versions

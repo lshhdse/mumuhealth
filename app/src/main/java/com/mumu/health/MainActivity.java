@@ -29,6 +29,7 @@ public class MainActivity extends Activity {
     private static final String HOST = "app.mumu.local";
     private static final int PICK = 101, CAMERA = 102, EXPORT = 103, IMPORT = 104;
     private WebView web;
+    private FrameLayout root;
     private RecordStore records;
     private SettingsStore settings;
     private final ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -44,8 +45,7 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         try { records = new RecordStore(this); settings = new SettingsStore(this); }
         catch (Exception e) { bootError = e.getMessage(); }
-        FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(0xfff6f5f0);
+        root = new FrameLayout(this);
         web = new WebView(this);
         root.addView(web, new FrameLayout.LayoutParams(-1, -1)); setContentView(root);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
@@ -62,7 +62,7 @@ public class MainActivity extends Activity {
         config.setDefaultTextEncodingName("UTF-8");
         config.setSupportMultipleWindows(false);
         config.setTextZoom(100);
-        web.setBackgroundColor(0xfff6f5f0);
+        applyNativeAppearance();
         WebView.setWebContentsDebuggingEnabled((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0);
         web.addJavascriptInterface(new Bridge(), "NativeBridge");
         web.setWebViewClient(new WebViewClient() {
@@ -87,6 +87,13 @@ public class MainActivity extends Activity {
         web.loadUrl("https://" + HOST + "/index.html");
     }
     private WebResourceResponse emptyResponse() { return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0])); }
+    private void applyNativeAppearance() {
+        int color = settings == null ? 0xfff2f2f7 : settings.themeBackground();
+        root.setBackgroundColor(color);
+        web.setBackgroundColor(color);
+        getWindow().setStatusBarColor(color);
+        getWindow().setNavigationBarColor(color);
+    }
     private File photoDir() { File dir = new File(getFilesDir(), "photos"); dir.mkdirs(); return dir; }
     private void reply(String id, Object result, String error) {
         if (id == null || isFinishing() || isDestroyed()) return;
@@ -155,6 +162,11 @@ public class MainActivity extends Activity {
                             records.delete(kind, input.getString("id")); reply(id, true, null); break;
                         }
                         case "settings": reply(id, settings.save(input), null); break;
+                        case "appearance": {
+                            JSONObject saved = settings.saveAppearance(input);
+                            runOnUiThread(() -> { if (!isDestroyed()) applyNativeAppearance(); });
+                            reply(id, saved, null); break;
+                        }
                         case "checkUpdate": reply(id, UpdateClient.check(MainActivity.this), null); break;
                         case "installUpdate": {
                             if (installingUpdate) throw new Exception("更新正在准备中，请稍候。");

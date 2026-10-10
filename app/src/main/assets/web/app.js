@@ -6,6 +6,8 @@ const paths = {
   home: '<path d="m3 10 9-7 9 7v10H3Z"/><path d="M9 20v-7h6v7"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18m-13 4h1m6 0h1"/>',
   settings: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-5 3-8 8-8s8 3 8 8"/>',
+  gear: '<path d="m9 3-1 3-3 1v4l3 1 1 3h6l1-3 3-1V7l-3-1-1-3Z"/><circle cx="12" cy="9" r="2"/><path d="M5 20h14"/>',
+  palette: '<path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-3.7c-1.5-1 .2-3.3 2-3.3h2a3 3 0 0 0 3-3c0-4.4-4-8-9-8Z"/><path d="M7 8h.01M12 6h.01M17 8h.01M6 13h.01"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
   sunrise: '<path d="M3 17h18M6 13a6 6 0 0 1 12 0M12 3v3M4 7l2 2m12 0 2-2M4 21h16"/>',
@@ -29,7 +31,16 @@ const icon = (name, cls = '') => `<svg viewBox="0 0 24 24" class="icon ${cls}" a
 const newToken = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
 const main = document.querySelector('#main');
 const overlay = document.querySelector('#overlay');
-let state = { page: 'today', date: localDate(), data: { version: 1, meals: [], workouts: [], templates: [] }, settings: {}, native: false, appVersion: '1.0.4' };
+const themes = [
+  { id: 'blue', name: '晴空蓝', caption: '清爽 · 明亮' },
+  { id: 'sage', name: '鼠尾草绿', caption: '自然 · 平静' },
+  { id: 'plum', name: '雾紫', caption: '柔和 · 安静' },
+  { id: 'rose', name: '玫瑰粉', caption: '温柔 · 轻盈' },
+  { id: 'amber', name: '暖杏', caption: '温暖 · 朴素' }
+];
+const themeId = value => themes.some(theme => theme.id === value) ? value : 'blue';
+let state = { page: 'today', settingsView: 'root', date: localDate(), data: { version: 1, meals: [], workouts: [], templates: [] }, settings: {}, native: false, appVersion: '1.0.5' };
+let savingAppearance = false;
 let updateState = { status: 'idle', available: false };
 let dismissedUpdate = 0;
 let installingUpdate = false;
@@ -68,7 +79,7 @@ function call(method, payload = {}) {
   return previewCall(method, payload);
 }
 const previewKey = 'mumu.preview.records.v1';
-let previewConfig = { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', textModel: 'qwen-plus', visionModel: 'qwen3-vl-plus', hasKey: false };
+let previewConfig = { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', textModel: 'qwen-plus', visionModel: 'qwen3-vl-plus', hasKey: false, theme: themeId(localStorage.getItem('mumu.preview.theme')) };
 function previewData(recoverPending = false) {
   const raw = localStorage.getItem(previewKey);
   const data = raw ? JSON.parse(raw) : { version: 1, meals: [], workouts: [] };
@@ -83,7 +94,8 @@ function previewData(recoverPending = false) {
   return data;
 }
 async function previewCall(method, payload) {
-  if (method === 'init') return { data: previewData(true), settings: previewConfig, native: false, appVersion: '1.0.4' };
+  if (method === 'init') return { data: previewData(true), settings: previewConfig, native: false, appVersion: '1.0.5' };
+  if (method === 'appearance') { previewConfig = { ...previewConfig, theme: themeId(payload.theme) }; localStorage.setItem('mumu.preview.theme', previewConfig.theme); return previewConfig; }
   if (method === 'checkUpdate') return { status: 'preview', available: false };
   if (method === 'installUpdate') throw new Error('请在安卓 APP 中安装更新。');
   if (method === 'saveMeal' || method === 'saveWorkout') {
@@ -189,10 +201,45 @@ function renderHistory() {
   const max = Math.max(1, ...dates.map(date => daySummary(state.data,date).kcal));
   return `${titleBar()}<div class="history-heading"><div><p class="eyebrow">按周查看</p><h1>历史记录</h1></div></div><div class="date-switch week-switch"><button data-action="shift-week" data-offset="-1" aria-label="上一周">${icon('left')}</button><strong>${weekRange(dates)}</strong><button data-action="shift-week" data-offset="1" aria-label="下一周">${icon('arrow')}</button></div><div class="selected-date-line"><span>${displayDate(state.date)} · ${weekName(state.date)}</span><label class="date-control">${icon('calendar','icon-sm')} 选日期<input id="history-date" type="date" value="${e(state.date)}" aria-label="选择历史日期"></label></div><div class="week-strip">${dates.map(date => `<button class="week-day ${date === state.date ? 'selected' : ''} ${daySummary(state.data,date).meals.length || daySummary(state.data,date).workouts.length ? 'has-record' : ''}" data-action="choose-date" data-date="${date}" aria-label="${date}"><span>${weekName(date)}</span><strong>${Number(date.slice(-2))}</strong><i class="day-dot"></i></button>`).join('')}</div><div class="stats-row"><div class="stat-cell"><strong>${summary.knownCount ? summary.kcal.toLocaleString() : '—'}</strong><span>${summary.unknownCount ? '已知热量 / 千卡' : '估算热量 / 千卡'}</span></div><div class="stat-cell"><strong>${summary.mealCount}<small> / 3</small></strong><span>已记录餐次</span></div><div class="stat-cell"><strong>${summary.workouts.length}</strong><span>训练记录 / 条</span></div></div>${summary.unknownCount ? `<p class="form-note">当天另有 ${summary.unknownCount} 项食物热量未知，未计入总数。</p>` : ''}<div class="chart-card"><h3>这一周的饮食记录</h3><p>仅汇总已填写的估算热量，不包含运动消耗。</p><div class="chart">${dates.map(date => { const day = daySummary(state.data,date); return `<div class="chart-column ${date === state.date ? 'selected' : ''}"><span class="chart-number">${day.knownCount ? `${day.kcal}${day.unknownCount ? '*' : ''}` : '—'}</span><div class="chart-bar" data-chart-height="${Math.max(3, Math.round(day.kcal / max * 60))}"></div><small>${Number(date.slice(-2))}日</small></div>`; }).join('')}</div><p>* 表示部分食物热量未知。</p></div>${mealSection(summary)}${workoutSection(summary)}<p class="footnote">可以为所选日期补充记录。</p>`;
 }
-function renderSettings() {
-  const settings = state.settings;
+function settingsHeader(title, subtitle) {
+  return `<header class="preferences-heading"><button class="preferences-back" data-action="settings-back" aria-label="返回我的">${icon('left')}<span>我的</span></button><h1>${title}</h1><p>${subtitle}</p></header>`;
+}
+function menuRow(view, symbol, title, detail = '', badge = '') {
+  return `<button class="menu-row" data-action="${view === 'templates' ? 'open-templates' : `open-${view}`}"><span class="menu-icon">${icon(symbol)}</span><span class="menu-title">${title}</span>${badge ? `<span class="menu-badge">${badge}</span>` : `<span class="menu-meta">${detail}</span>`}${icon('arrow','chevron')}</button>`;
+}
+function recordStats() {
   const days = new Set([...state.data.meals,...state.data.workouts].map(record => record.date)).size;
-  return `${titleBar()}<div class="settings-intro"><span class="brand-mark">${icon('leaf')}</span><h1>我的</h1><p>偏好设置与本地记录</p></div><div class="stats-row"><div class="stat-cell"><strong>${days}</strong><span>记录天数</span></div><div class="stat-cell"><strong>${state.data.meals.length}</strong><span>饮食记录</span></div><div class="stat-cell"><strong>${state.data.workouts.length}</strong><span>训练记录</span></div></div>${state.native ? '' : '<p class="preview-notice">浏览器仅用于界面预览。密钥不会保存在此预览中，真实 AI 请在安卓 APP 中配置。</p>'}<section class="settings-card"><div class="card-title"><h2>AI 饮食助手</h2><span class="status-pill ${settings.hasKey ? '' : 'off'}">${settings.hasKey ? '已填写密钥' : '待配置'}</span></div><label class="field"><span class="field-label">服务地址</span><input id="base-url" type="url" inputmode="url" spellcheck="false" autocapitalize="off" value="${e(settings.baseUrl)}" placeholder="https://…/v1"><span class="field-hint">支持 Chat Completions 格式的 HTTPS 接口。百炼也可填写你所在业务空间的专属地址。</span></label><label class="field"><span class="field-label">API Key</span><span class="key-row"><input id="api-key" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="${settings.hasKey ? '已安全保存，留空保持原密钥' : '填写你自己的密钥'}"><button data-action="toggle-key" aria-label="显示或隐藏新输入的密钥">${icon('eye')}</button></span><span class="field-hint">在手机上加密保存；更换服务时，请同时填写对应的新密钥。</span></label><div class="field-row"><label class="field"><span class="field-label">文字模型</span><input id="text-model" value="${e(settings.textModel)}" spellcheck="false" autocapitalize="off"></label><label class="field"><span class="field-label">图片模型</span><input id="vision-model" value="${e(settings.visionModel)}" spellcheck="false" autocapitalize="off"></label></div><p class="field-hint">图片模型需要支持识图。默认预填百炼模型，其他服务请修改名称。</p><div id="settings-error" class="error" role="alert"></div><div class="button-row"><button class="primary" data-action="save-settings">保存设置</button><button class="secondary" data-action="test-ai">测试文字连接</button></div><p class="privacy-line">${icon('shield')}保存文字或照片后，会将本次内容发送给你配置的 AI 服务进行估算。手动填写热量时不会发送。请求会消耗该服务的额度。</p><div class="button-row"><button class="text-button" data-action="help">百炼密钥说明 ↗</button>${settings.hasKey ? '<button class="danger-text" data-action="clear-key">清除已保存的密钥</button>' : ''}</div></section><section class="settings-card"><div class="card-title"><h2>力量训练</h2></div><button class="settings-action" data-action="open-templates">${icon('dumbbell')}<span>管理训练模板<small class="field-hint">练腿、练背等固定动作与默认重量</small></span>${icon('arrow','chevron')}</button></section>${updateSection()}<section class="settings-card"><div class="card-title"><h2>我的数据</h2><span class="status-pill">本地保存</span></div><button class="settings-action" data-action="export">${icon('download')}<span>导出记录与照片</span>${icon('arrow','chevron')}</button><button class="settings-action" data-action="import">${icon('upload')}<span>从备份恢复</span>${icon('arrow','chevron')}</button><p class="field-hint">备份不包含 API Key。卸载 APP 会清除本地记录，换手机前请先导出备份。</p></section><div class="settings-about">沐沐健康 · ${e(state.appVersion)}<br>热量为估算值，可以按实际份量修正。<br>训练只记录，不计算热量差。</div>`;
+  return `<div class="stats-row"><div class="stat-cell"><strong>${days}</strong><span>记录天数</span></div><div class="stat-cell"><strong>${state.data.meals.length}</strong><span>饮食记录</span></div><div class="stat-cell"><strong>${state.data.workouts.length}</strong><span>训练记录</span></div></div>`;
+}
+function renderSettings() {
+  if (state.settingsView === 'ai') return renderAiSettings();
+  if (state.settingsView === 'appearance') return renderAppearance();
+  if (state.settingsView === 'general') return `${settingsHeader('设置', '管理你的记录与备份。')}${recordStats()}<section class="settings-card"><div class="card-title"><h2>数据与备份</h2><span class="status-pill">本地保存</span></div><button class="settings-action" data-action="export">${icon('download')}<span>导出记录与照片</span>${icon('arrow','chevron')}</button><button class="settings-action" data-action="import">${icon('upload')}<span>从备份恢复</span>${icon('arrow','chevron')}</button><p class="field-hint">备份不包含 API Key。卸载 APP 会清除本地记录，换手机前请先导出备份。</p></section><p class="preferences-note">热量为估算值，可以按实际份量修正。<br>训练只记录，不计算热量差。</p>`;
+  if (state.settingsView === 'updates') return `${settingsHeader('检查更新', '每次打开 APP，会自动检查新版本。')}${updateSection()}<p class="preferences-note">可以稍后更新，再从这里继续安装。</p>`;
+  const theme = themes.find(theme => theme.id === themeId(state.settings.theme));
+  const updateLabel = updateState.status === 'checking' ? '检查中' : updateState.status === 'current' ? '已是最新' : updateState.status === 'error' ? '检查失败' : e(state.appVersion);
+  return `${titleBar()}<header class="heading mine-heading"><h1>我的</h1><p>让记录更合你的习惯。</p></header><div class="mine-summary"><span class="mine-avatar">${icon('check')}</span><div><strong>沐沐健康</strong><p>每一餐，每一次行动。</p></div></div><section class="menu-section"><h2>偏好</h2><div class="menu-group">${menuRow('general','gear','设置','数据与备份')}${menuRow('appearance','palette','外观',theme.name)}${menuRow('ai','spark','AI 配置',state.settings.hasKey ? '已配置' : '待配置')}</div></section><section class="menu-section"><h2>记录与应用</h2><div class="menu-group">${menuRow('templates','dumbbell','训练模板',`${state.data.templates.length} 个模板`)}${menuRow('updates','download','检查更新',updateLabel,updateState.available ? '有新版本' : '')}</div></section><div class="settings-about">沐沐健康 · ${e(state.appVersion)}</div>`;
+}
+function renderAppearance() {
+  const selected = themeId(state.settings.theme);
+  return `${settingsHeader('外观', '选一种喜欢的颜色，让日常记录更舒心。')}<section class="appearance-section"><h2>主题配色</h2><div class="theme-grid">${themes.map(theme => `<button class="theme-option ${selected === theme.id ? 'selected' : ''}" data-action="choose-theme" data-theme-id="${theme.id}" aria-pressed="${selected === theme.id}" ${savingAppearance ? 'disabled' : ''}><span class="theme-preview" data-preview="${theme.id}" aria-hidden="true"><span class="preview-title"></span><span class="preview-card"><span class="preview-ring"></span><span class="preview-lines"></span></span><span class="preview-card"><span class="preview-ring"></span><span class="preview-lines"></span></span><span class="preview-tabs"><i></i><i></i><i></i></span></span><span class="theme-caption"><span><strong>${theme.name}</strong><small>${theme.caption}</small></span><span class="theme-check">${icon('check')}</span></span></button>`).join('')}</div></section><p class="preferences-note">点选即生效，下次打开继续使用。<br>首页、历史和记录表单都会使用这套配色。</p>`;
+}
+function applyTheme() { document.documentElement.dataset.theme = themeId(state.settings.theme); }
+async function saveAppearance(value) {
+  if (savingAppearance || themeId(state.settings.theme) === value) return;
+  const previous = state.settings.theme;
+  savingAppearance = true; state.settings.theme = value; applyTheme(); render();
+  try { state.settings = await call('appearance', { theme: value }); }
+  catch (error) { state.settings.theme = previous; toast(error.message); }
+  finally { savingAppearance = false; applyTheme(); if (state.page === 'settings' && ['root','appearance'].includes(state.settingsView)) render(); }
+}
+function refreshUpdateUi() {
+  if (state.page === 'settings' && ['root','updates'].includes(state.settingsView)) render();
+}
+
+function renderAiSettings() {
+  const settings = state.settings;
+  return `${settingsHeader('AI 配置', '配置饮食估算使用的服务与模型。')}${state.native ? '' : '<p class="preview-notice">浏览器仅用于界面预览，真实 AI 请在安卓 APP 中配置。</p>'}<section class="settings-card"><div class="card-title"><h2>AI 饮食助手</h2><span class="status-pill ${settings.hasKey ? '' : 'off'}">${settings.hasKey ? '已填写密钥' : '待配置'}</span></div><label class="field"><span class="field-label">服务地址</span><input id="base-url" type="url" inputmode="url" spellcheck="false" autocapitalize="off" value="${e(settings.baseUrl)}" placeholder="https://…/v1"><span class="field-hint">支持 Chat Completions 格式的 HTTPS 接口。百炼也可填写你所在业务空间的专属地址。</span></label><label class="field"><span class="field-label">API Key</span><span class="key-row"><input id="api-key" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="${settings.hasKey ? '已安全保存，留空保持原密钥' : '填写你自己的密钥'}"><button data-action="toggle-key" aria-label="显示或隐藏新输入的密钥">${icon('eye')}</button></span><span class="field-hint">在手机上加密保存；更换服务时，请同时填写对应的新密钥。</span></label><div class="field-row"><label class="field"><span class="field-label">文字模型</span><input id="text-model" value="${e(settings.textModel)}" spellcheck="false" autocapitalize="off"></label><label class="field"><span class="field-label">图片模型</span><input id="vision-model" value="${e(settings.visionModel)}" spellcheck="false" autocapitalize="off"></label></div><p class="field-hint">图片模型需要支持识图。默认预填百炼模型，其他服务请修改名称。</p><div id="settings-error" class="error" role="alert"></div><div class="button-row"><button class="primary" data-action="save-settings">保存设置</button><button class="secondary" data-action="test-ai">测试文字连接</button></div><p class="privacy-line">${icon('shield')}保存文字或照片后，会将本次内容发送给你配置的 AI 服务进行估算。手动填写热量时不会发送。请求会消耗该服务的额度。</p><div class="button-row"><button class="text-button" data-action="help">百炼密钥说明 ↗</button>${settings.hasKey ? '<button class="danger-text" data-action="clear-key">清除已保存的密钥</button>' : ''}</div></section>`;
 }
 function updateSection() {
   const status = updateState.available ? `发现新版本 · ${e(updateState.versionName)}` :
@@ -203,27 +250,28 @@ function updateSection() {
 }
 async function checkUpdate(manual = false) {
   if (updateState.status === 'checking') return;
-  updateState = { status: 'checking', available: false }; if (state.page === 'settings') render();
+  updateState = { status: 'checking', available: false }; refreshUpdateUi();
   try {
-    updateState = await call('checkUpdate'); if (state.page === 'settings') render();
+    updateState = await call('checkUpdate'); refreshUpdateUi();
     if (updateState.available && (manual || dismissedUpdate !== updateState.versionCode)) {
       if (overlay.childElementCount) return;
       const yes = await confirmDialog('发现新版本', `${updateState.versionName} 已发布。现在下载安装吗？`, false, '稍后再说', '立即更新');
       if (yes) await installUpdate(); else dismissedUpdate = updateState.versionCode;
     } else if (manual && !updateState.available) toast(updateState.status === 'current' ? '当前已是最新版本。' : updateState.status === 'preview' ? '请在安卓 APP 中检查更新。' : '暂时没有已发布的新版本。');
-  } catch (error) { updateState = { status: 'error', available: false }; if (state.page === 'settings') render(); if (manual) toast(error.message); }
+  } catch (error) { updateState = { status: 'error', available: false }; refreshUpdateUi(); if (manual) toast(error.message); }
 }
 async function installUpdate() {
   if (installingUpdate) return;
-  installingUpdate = true; if (state.page === 'settings') render();
+  installingUpdate = true; refreshUpdateUi();
   toast('正在下载并校验安装包，请稍候…');
   try {
     const result = await call('installUpdate');
     if (result.status === 'permission') toast('请允许安装此来源应用，返回后再次点击“立即更新”。');
   } catch (error) { toast(error.message); }
-  finally { installingUpdate = false; if (state.page === 'settings') render(); }
+  finally { installingUpdate = false; refreshUpdateUi(); }
 }
 function render() {
+  applyTheme();
   main.innerHTML = state.page === 'today' ? renderToday() : state.page === 'history' ? renderHistory() : renderSettings();
   document.querySelector('#navigation').innerHTML = [['today','home','今天'],['history','calendar','历史'],['settings','settings','我的']].map(([page,name,label]) => `<button class="nav-button ${state.page === page ? 'active' : ''}" data-action="navigate" data-page="${page}" ${state.page === page ? 'aria-current="page"' : ''}>${icon(name)}${label}</button>`).join('');
   // Applied by trusted code because inline styles are prohibited by the CSP.
@@ -451,7 +499,11 @@ async function importBackup() {
 async function action(name, node) {
   if (busy) return;
   switch (name) {
-    case 'navigate': state.page = node.dataset.page; if (state.page === 'history') state.date = localDate(); render(); window.scrollTo(0,0); break;
+    case 'navigate': state.page = node.dataset.page; state.settingsView = 'root'; if (state.page === 'history') state.date = localDate(); render(); window.scrollTo(0,0); break;
+    case 'open-general': case 'open-appearance': case 'open-ai': case 'open-updates':
+      state.settingsView = name.slice(5); render(); window.scrollTo(0,0); break;
+    case 'settings-back': state.settingsView = 'root'; render(); window.scrollTo(0,0); break;
+    case 'choose-theme': await saveAppearance(node.dataset.themeId); break;
     case 'add-meal': openMeal(node.dataset.meal); break;
     case 'view-meal': openMealDetail(state.data.meals.find(record => record.id === node.dataset.id)); break;
     case 'edit-meal': openMeal('',state.data.meals.find(record => record.id === node.dataset.id)); break;
@@ -503,7 +555,7 @@ async function action(name, node) {
 document.addEventListener('click', event => { const node = event.target.closest('[data-action]'); if (node) { event.preventDefault(); action(node.dataset.action,node).catch(error => { busy = false; toast(error.message || '操作失败，请重试。'); }); } else if (event.target.classList.contains('overlay') && !confirmResolve) closeSheet(); });
 document.addEventListener('input', event => { if (editor?.kind === 'meal') { collectMeal(); updateReviewTotal(); saveDraft(); } });
 document.addEventListener('change', event => { if (event.target.id === 'history-date' && event.target.value) { state.date = event.target.value; render(); } });
-window.handleBack = () => { if (busy) { toast('正在处理，请稍候。'); return true; } if (overlay.childElementCount) { closeSheet(); return true; } if (state.page !== 'today') { state.page = 'today'; render(); return true; } return false; };
+window.handleBack = () => { if (busy) { toast('正在处理，请稍候。'); return true; } if (overlay.childElementCount) { closeSheet(); return true; } if (state.page === 'settings' && state.settingsView !== 'root') { state.settingsView = 'root'; render(); window.scrollTo(0,0); return true; } if (state.page !== 'today') { state.page = 'today'; render(); return true; } return false; };
 (async function init() {
   try { const initial = await call('init'); Object.assign(state,initial); render(); if (state.native) checkUpdate(); }
   catch (error) { main.innerHTML = `<div class="fatal"><h2>暂时无法读取记录</h2><p>${e(error.message)}<br>请关闭后重新打开 APP。已有文件不会被自动清空。</p></div>`; }

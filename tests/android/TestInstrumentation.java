@@ -104,6 +104,7 @@ public class TestInstrumentation extends Instrumentation {
             batchStore.restore(backupWithTemplates);
             check(new RecordStore(batchContext).snapshot().getJSONArray("templates").length() == 5, "新版备份恢复模板");
             SettingsStore settings = new SettingsStore(stable);
+            check(settings.publicSettings().getString("theme").equals("blue"), "旧设置默认蓝色主题");
             String testKey = "sk-NATIVE-TEST-ONLY-not-a-real-key";
             JSONObject config = new JSONObject().put("baseUrl", "https://example.invalid/v1").put("textModel", "fixture-text").put("visionModel", "fixture-vision").put("apiKey", testKey);
             settings.save(config);
@@ -112,6 +113,13 @@ public class TestInstrumentation extends Instrumentation {
             check(!stable.getSharedPreferences("ai_settings", 0).getAll().toString().contains(testKey), "偏好文件没有明文密钥");
             config.put("apiKey", ""); settings.save(config);
             check(settings.apiKey().equals(testKey), "留空保留旧密钥");
+            settings.saveAppearance(new JSONObject().put("theme", "sage"));
+            check(new SettingsStore(stable).publicSettings().getString("theme").equals("sage"), "主题持久化");
+            check(settings.themeBackground() == 0xfff2f5f1, "原生背景同步主题");
+            check(settings.apiKey().equals(testKey), "外观设置保留已保存密钥");
+            settings.save(config);
+            check(settings.publicSettings().getString("theme").equals("sage"), "AI 设置保留主题");
+            rejects(() -> settings.saveAppearance(new JSONObject().put("theme", "unsupported")), "拒绝未知主题");
             rejects(() -> settings.save(new JSONObject(config.toString()).put("baseUrl", "http://example.invalid")), "拒绝 HTTP 服务地址");
             settings.save(config.put("clearKey", true)); check(settings.apiKey().isEmpty(), "密钥清除");
             JSONObject ai = AiClient.parseEstimate("```json\n{\"foods\":[{\"name\":\"鸡蛋\",\"portion\":\"2 个\",\"kcal\":150},{\"name\":\"粥\",\"portion\":\"一碗\",\"kcal\":null}],\"assumptions\":\"常见份量\"}\n```");

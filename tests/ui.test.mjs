@@ -55,8 +55,34 @@ try {
   await page.reload(); await page.locator('[data-action="navigate"][data-page="history"]').click(); await page.locator('#history-date').fill('2026-10-07'); await page.locator('#history-date').dispatchEvent('change'); await visible('米饭');
   await screenshot('build/screenshots/history.png');
   await click('view-meal'); await click('edit-meal'); await click('delete-record'); await click('confirm-no'); await page.getByLabel('食物 1 名称').waitFor(); await click('delete-record'); await click('confirm-yes'); await page.waitForFunction(()=>!document.querySelector('.dialog')); await page.waitForFunction(()=>!document.querySelector('.meal-record'));
-  await page.locator('[data-action="navigate"][data-page="settings"]').click(); await visible('AI 饮食助手'); await page.locator('#base-url').fill('http://example.com/v1'); await click('save-settings'); await visible('请填写不含密钥、参数的 HTTPS');
-  await page.locator('#base-url').fill('https://dashscope.aliyuncs.com/compatible-mode/v1'); await click('save-settings'); await screenshot('build/screenshots/settings.png');
+  await page.locator('[data-action="navigate"][data-page="settings"]').click();
+  assert.equal(await page.locator('.menu-row').count(),5);
+  assert.equal(await page.locator('#base-url, #api-key, [data-action="export"], .theme-option').count(),0,'我的首页只显示菜单');
+  await screenshot('build/screenshots/settings.png');
+  await click('open-general'); await visible('数据与备份'); assert.equal(await page.locator('[data-action="export"]').count(),1);
+  assert.equal(await page.evaluate(()=>window.handleBack()),true); await page.locator('.menu-group').first().waitFor();
+  await click('open-ai'); await visible('AI 饮食助手'); await page.locator('#base-url').fill('http://example.com/v1'); await click('save-settings'); await visible('请填写不含密钥、参数的 HTTPS');
+  await page.locator('#base-url').fill('https://dashscope.aliyuncs.com/compatible-mode/v1'); await click('save-settings'); await click('settings-back');
+  await click('open-appearance');
+  const accentColors = new Set();
+  for (const theme of ['sage','plum','rose','amber','blue']) {
+    await page.locator(`[data-theme-id="${theme}"]`).click();
+    await page.waitForFunction(id=>document.documentElement.dataset.theme===id && !document.querySelector('.theme-option:disabled'),theme);
+    assert.equal(await page.locator(`[data-theme-id="${theme}"]`).getAttribute('aria-pressed'),'true');
+    accentColors.add(await page.locator('.theme-option.selected').evaluate(node=>getComputedStyle(node).borderTopColor));
+    assert.equal(await page.evaluate(()=>localStorage.getItem('mumu.preview.theme')),theme);
+  }
+  assert.equal(accentColors.size,5,'五套配色的强调色应不同');
+  await page.locator('[data-theme-id="sage"]').click(); await screenshot('build/screenshots/appearance.png');
+  await page.locator('[data-action="navigate"][data-page="today"]').click();
+  assert.equal(await page.locator('.energy-value').evaluate(node=>getComputedStyle(node).color),'rgb(40, 114, 91)');
+  await click('add-workout'); assert.equal(await page.locator('.sheet').evaluate(node=>getComputedStyle(node).backgroundColor),'rgb(242, 245, 241)'); await click('close-sheet');
+  await page.locator('[data-action="navigate"][data-page="history"]').click();
+  assert.equal(await page.locator('.week-day.selected').evaluate(node=>getComputedStyle(node).backgroundColor),'rgb(40, 114, 91)');
+  await page.reload(); await page.getByRole('heading',{name:'今天',exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),'sage','主题重启后保留');
+  await page.locator('[data-action="navigate"][data-page="settings"]').click(); await page.getByText('鼠尾草绿',{exact:true}).waitFor();
+  await click('open-ai'); await click('save-settings'); assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),'sage','AI 设置不能重置主题'); await click('settings-back');
   await click('open-templates'); await page.locator('[data-action="edit-template"][data-id="default-back"]').click(); await page.locator('#template-name').fill('练背 A'); await page.getByLabel('动作 1 组数').fill('4'); await page.getByLabel('动作 1 每组次数').fill('10'); await page.getByLabel('动作 1 重量').fill('25');
   await page.locator('[data-action="remove-template-exercise"][data-index="1"]').click(); await click('add-template-exercise'); await page.getByLabel('动作 3 名称').fill('硬拉'); await page.getByLabel('动作 3 组数').fill('3'); await page.getByLabel('动作 3 每组次数').fill('8'); await page.getByLabel('动作 3 重量').fill('50'); await screenshot('build/screenshots/template-editor.png'); await click('save-template'); await page.locator('[data-action="edit-template"][data-id="default-back"]').waitFor();
   assert.equal((await stored()).templates.find(template=>template.id==='default-back').exercises[0].weight,25);
@@ -68,6 +94,12 @@ try {
   await page.locator('[data-action="navigate"][data-page="today"]').click();
   await page.getByRole('button',{name:'添加晚餐',exact:true}).click(); await page.locator('#meal-description').fill('一碗面，明天再补份量'); await click('close-sheet'); await click('resume-draft'); assert.equal(await page.locator('#meal-description').inputValue(),'一碗面，明天再补份量'); await click('close-sheet');
   for (const width of [320,360,393,430]) { await page.setViewportSize({width,height:852}); await page.locator('[data-action="navigate"][data-page="history"]').click(); assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth),`历史页面在 ${width}px 下不应横向溢出`); await click('add-workout'); await page.locator('[data-action="apply-template"][data-id="default-back"]').click(); assert.ok(await page.evaluate(()=>document.querySelector('.sheet').scrollWidth <= window.innerWidth),`训练模板在 ${width}px 下不应横向溢出`); await click('close-sheet'); await page.locator('[data-action="navigate"][data-page="today"]').click(); await page.getByRole('button',{name:'添加早餐',exact:true}).click(); assert.ok(await page.evaluate(()=>document.querySelector('.sheet').scrollWidth <= window.innerWidth),`表单在 ${width}px 下不应横向溢出`); await click('close-sheet'); }
+  for (const width of [320,360,393,430]) {
+    await page.setViewportSize({width,height:852}); await page.locator('[data-action="navigate"][data-page="settings"]').click();
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),`我的页面在 ${width}px 下不应横向溢出`);
+    await click('open-appearance'); assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),`主题页面在 ${width}px 下不应横向溢出`);
+  }
+  console.log('PASS: 我的五项菜单、分层设置与返回、五种全局主题、主题重载持久化、AI 设置保留配色和 4 种屏幕宽度。');
   console.log('PASS: 手动饮食、未知热量、修改、持久化、有氧/力量、历史补录、删除确认、设置校验、草稿恢复、4种屏幕宽度。');
   console.log('PASS: 固定周日期选择与整周跳转、多运动混合记录、整体校验、独立编辑/删除、模板管理/持久化/带入，以及模板与训练副本互不影响。');
 
@@ -116,6 +148,9 @@ try {
   await updatePage.getByRole('heading',{name:'发现新版本'}).waitFor();
   await updatePage.locator('[data-action="confirm-no"]').click();
   await updatePage.locator('[data-action="navigate"][data-page="settings"]').click();
+  await updatePage.locator('[data-action="open-updates"]').getByText('有新版本').waitFor();
+  assert.equal(await updatePage.locator('[data-action="check-update"]').count(),0,'更新操作收进二级界面');
+  await updatePage.locator('[data-action="open-updates"]').click();
   await updatePage.getByText('发现新版本 · 沐沐健康 1.0.4.2').waitFor();
   await updatePage.locator('[data-action="check-update"]').click();
   await updatePage.getByRole('heading',{name:'发现新版本'}).waitFor();
@@ -124,6 +159,34 @@ try {
   assert.equal(await updatePage.evaluate(()=>window.fixtureUpdates.filter(method=>method==='checkUpdate').length),2);
   await updateContext.close();
   console.log('PASS: 启动发现更新、稍后再说、我的内再次检查和立即更新。');
+  const appearanceContext = await browser.newContext({viewport:{width:393,height:852},locale:'zh-CN'});
+  await appearanceContext.addInitScript(()=>{
+    const config={theme:'plum',baseUrl:'https://example.test/v1',textModel:'text',visionModel:'vision',hasKey:true};
+    window.NativeBridge={call(method,payload,id){
+      const input=JSON.parse(payload);
+      const reply=(result,error=null)=>window.nativeResult(JSON.stringify({id,result,error}));
+      if(method==='init') return setTimeout(()=>reply({data:{version:1,meals:[],workouts:[],templates:[]},settings:config,native:true}),10);
+      if(method==='checkUpdate') { window.finishFixtureUpdate=()=>reply({status:'current',available:false}); return; }
+      if(method==='appearance') return setTimeout(()=>{
+        if(input.theme==='rose') reply(null,'主题保存失败测试');
+        else { config.theme=input.theme; reply({...config}); }
+      },30);
+    }};
+  });
+  const appearancePage=await appearanceContext.newPage(); appearancePage.on('pageerror',error=>errors.push(error.message)); await appearancePage.goto(root);
+  await appearancePage.getByRole('heading',{name:'今天',exact:true}).waitFor();
+  assert.equal(await appearancePage.evaluate(()=>document.documentElement.dataset.theme),'plum','读取安卓保存的主题');
+  await appearancePage.locator('[data-action="navigate"][data-page="settings"]').click(); await appearancePage.locator('[data-action="open-ai"]').click();
+  await appearancePage.locator('#api-key').fill('fixture-only-unsaved'); await appearancePage.evaluate(()=>window.finishFixtureUpdate());
+  assert.equal(await appearancePage.locator('#api-key').inputValue(),'fixture-only-unsaved','后台更新检查不能抹去正在输入的配置');
+  await appearancePage.locator('[data-action="settings-back"]').click(); await appearancePage.locator('[data-action="open-appearance"]').click();
+  await appearancePage.locator('[data-theme-id="rose"]').click(); await appearancePage.getByText('主题保存失败测试',{exact:true}).waitFor();
+  assert.equal(await appearancePage.evaluate(()=>document.documentElement.dataset.theme),'plum','保存失败应恢复原主题');
+  await appearancePage.locator('[data-theme-id="blue"]').click(); await appearancePage.waitForFunction(()=>!document.querySelector('.theme-option:disabled'));
+  await appearancePage.locator('[data-action="settings-back"]').click(); await appearancePage.locator('[data-action="open-ai"]').click();
+  await appearancePage.getByText('已填写密钥',{exact:true}).waitFor();
+  await appearanceContext.close();
+  console.log('PASS: 安卓主题配置读取与保存、失败回退、保留密钥配置、后台更新检查不覆盖输入。');
   const previewContext = await browser.newContext({viewport:{width:393,height:852},locale:'zh-CN',timezoneId:'Asia/Shanghai'});
   const previewPage = await previewContext.newPage(); previewPage.on('pageerror',error=>errors.push(error.message)); await previewPage.goto(root);
   await previewPage.getByRole('button',{name:'添加早餐',exact:true}).click(); await previewPage.locator('#meal-description').fill('一碗泡面'); await previewPage.locator('[data-action="save-meal"]').click();

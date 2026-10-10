@@ -39,7 +39,22 @@ public final class SettingsStore {
     public synchronized JSONObject publicSettings() throws Exception {
         return new JSONObject().put("baseUrl", prefs.getString("baseUrl", "https://dashscope.aliyuncs.com/compatible-mode/v1"))
             .put("textModel", prefs.getString("textModel", "qwen-plus")).put("visionModel", prefs.getString("visionModel", "qwen3-vl-plus"))
-            .put("hasKey", !prefs.getString("encryptedKey", "").isEmpty());
+            .put("hasKey", !prefs.getString("encryptedKey", "").isEmpty()).put("theme", prefs.getString("theme", "blue"));
+    }
+    public synchronized JSONObject saveAppearance(JSONObject input) throws Exception {
+        String theme = input.optString("theme");
+        if (!theme.matches("blue|sage|plum|rose|amber")) throw new Exception("请选择支持的主题。");
+        if (!prefs.edit().putString("theme", theme).commit()) throw new Exception("外观保存失败。");
+        return publicSettings();
+    }
+    public synchronized int themeBackground() {
+        switch (prefs.getString("theme", "blue")) {
+            case "sage": return 0xfff2f5f1;
+            case "plum": return 0xfff5f2f8;
+            case "rose": return 0xfffaf2f3;
+            case "amber": return 0xfff8f4ed;
+            default: return 0xfff2f2f7;
+        }
     }
     public synchronized JSONObject save(JSONObject input) throws Exception {
         String base = RecordStore.text(input, "baseUrl", 1000).replaceAll("/+$", "");
