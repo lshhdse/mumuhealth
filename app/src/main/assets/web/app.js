@@ -1,8 +1,11 @@
-import { MEALS, localDate, shiftDate, weekDates, daySummary, mealEnergy, validateMeal, validateWorkout, validateTemplate, upgradeTemplateDefaults, escapeHtml as e } from './domain.mjs';
+import { MEALS, localDate, shiftDate, shiftMonth, weekDates, daySummary, mealEnergy, validateMeal, validateWorkout, validateTemplate, upgradeTemplateDefaults, escapeHtml as e } from './domain.mjs';
+import { renderMonthStatistics } from './calendar.mjs';
 import defaultTemplates from './workout-templates.json';
 import legacyTemplates from './workout-templates-legacy.json';
 
 const paths = {
+  meal: '<path d="M4 3v6c0 3 6 3 6 0V3M7 3v18M16 3v10h4V3c-3 0-4 3-4 6m4 4v8"/>',
+  layers: '<path d="m12 3 10 5-10 5L2 8Zm-10 9 10 5 10-5M2 16l10 5 10-5"/>',
   leaf: '<path d="M5 19C2 10 7 3 20 4c1 12-5 17-15 15Z"/><path d="m5 19 10-10m-5 5V9m0 5h6"/>',
   home: '<path d="m3 10 9-7 9 7v10H3Z"/><path d="M9 20v-7h6v7"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18m-13 4h1m6 0h1"/>',
@@ -40,7 +43,7 @@ const themes = [
   { id: 'amber', name: '暖杏', caption: '温暖 · 朴素' }
 ];
 const themeId = value => themes.some(theme => theme.id === value) ? value : 'blue';
-let state = { page: 'today', settingsView: 'root', date: localDate(), data: { version: 1, meals: [], workouts: [], templates: [] }, settings: {}, native: false, appVersion: '1.0.7' };
+let state = { page: 'today', settingsView: 'root', calendarView: 'week', calendarMonth: localDate().slice(0,7), calendarMetric: 'energy', date: localDate(), data: { version: 1, meals: [], workouts: [], templates: [] }, settings: {}, native: false, appVersion: '1.0.8' };
 let savingAppearance = false;
 let updateState = { status: 'idle', available: false };
 let dismissedUpdate = 0;
@@ -99,7 +102,7 @@ function previewData(recoverPending = false) {
   return data;
 }
 async function previewCall(method, payload) {
-  if (method === 'init') return { data: previewData(true), settings: previewConfig, native: false, appVersion: '1.0.7' };
+  if (method === 'init') return { data: previewData(true), settings: previewConfig, native: false, appVersion: '1.0.8' };
   if (method === 'appearance') { previewConfig = { ...previewConfig, theme: themeId(payload.theme) }; localStorage.setItem('mumu.preview.theme', previewConfig.theme); return previewConfig; }
   if (method === 'checkUpdate') return { status: 'preview', available: false };
   if (method === 'installUpdate') throw new Error('请在安卓 APP 中安装更新。');
@@ -200,11 +203,14 @@ function renderToday() {
   return `${titleBar()}${state.native ? '' : '<p class="preview-notice">界面预览 · 真实拍照与 AI 识别请使用安卓安装包</p>'}<header class="heading"><p class="eyebrow">我的今日清单</p><h1>今天</h1><p>饮食与训练，都轻松记在这里。</p></header>${summaryCard(summary)}${draftButton()}${mealSection(summary)}${workoutSection(summary)}<p class="footnote">不必完美，记录就是一个好的开始。</p>`;
 }
 function draftButton() { try { return localStorage.getItem('mumu.draft') ? '<div class="section-title"><span>有一条未保存的饮食草稿</span><button data-action="resume-draft">继续记录 →</button></div>' : ''; } catch { return ''; } }
+function renderCalendar() {
+  return `${titleBar()}<header class="calendar-heading"><h1>日历</h1><p>按天记录，按月回看。</p></header><div class="calendar-tabs" role="group" aria-label="日历视图"><button data-action="calendar-view" data-view="week" aria-pressed="${state.calendarView === 'week'}">按日记录</button><button data-action="calendar-view" data-view="month" aria-pressed="${state.calendarView === 'month'}">月统计</button></div>${state.calendarView === 'month' ? renderMonthStatistics(state.data,state.calendarMonth,localDate(),state.calendarMetric,icon) : `<section id="daily-calendar" aria-label="按日记录">${renderHistory()}</section>`}`;
+}
 function renderHistory() {
   const summary = daySummary(state.data, state.date);
   const dates = weekDates(state.date);
   const max = Math.max(1, ...dates.map(date => daySummary(state.data,date).kcal));
-  return `${titleBar()}<div class="history-heading"><div><p class="eyebrow">按周查看</p><h1>历史记录</h1></div></div><div class="date-switch week-switch"><button data-action="shift-week" data-offset="-1" aria-label="上一周">${icon('left')}</button><strong>${weekRange(dates)}</strong><button data-action="shift-week" data-offset="1" aria-label="下一周">${icon('arrow')}</button></div><div class="selected-date-line"><span>${displayDate(state.date)} · ${weekName(state.date)}</span><label class="date-control">${icon('calendar','icon-sm')} 选日期<input id="history-date" type="date" value="${e(state.date)}" aria-label="选择历史日期"></label></div><div class="week-strip">${dates.map(date => `<button class="week-day ${date === state.date ? 'selected' : ''} ${daySummary(state.data,date).meals.length || daySummary(state.data,date).workouts.length ? 'has-record' : ''}" data-action="choose-date" data-date="${date}" aria-label="${date}"><span>${weekName(date)}</span><strong>${Number(date.slice(-2))}</strong><i class="day-dot"></i></button>`).join('')}</div><div class="stats-row"><div class="stat-cell"><strong>${summary.knownCount ? summary.kcal.toLocaleString() : '—'}</strong><span>${summary.unknownCount ? '已知热量 / 千卡' : '估算热量 / 千卡'}</span></div><div class="stat-cell"><strong>${summary.mealCount}<small> / 3</small></strong><span>已记录餐次</span></div><div class="stat-cell"><strong>${summary.workouts.length}</strong><span>训练记录 / 条</span></div></div>${summary.unknownCount ? `<p class="form-note">当天另有 ${summary.unknownCount} 项食物热量未知，未计入总数。</p>` : ''}<div class="chart-card"><h3>这一周的饮食记录</h3><p>仅汇总已填写的估算热量，不包含运动消耗。</p><div class="chart">${dates.map(date => { const day = daySummary(state.data,date); return `<div class="chart-column ${date === state.date ? 'selected' : ''}"><span class="chart-number">${day.knownCount ? `${day.kcal}${day.unknownCount ? '*' : ''}` : '—'}</span><div class="chart-bar" data-chart-height="${Math.max(3, Math.round(day.kcal / max * 60))}"></div><small>${Number(date.slice(-2))}日</small></div>`; }).join('')}</div><p>* 表示部分食物热量未知。</p></div>${mealSection(summary)}${workoutSection(summary)}<p class="footnote">可以为所选日期补充记录。</p>`;
+  return `<div class="date-switch week-switch"><button data-action="shift-week" data-offset="-1" aria-label="上一周">${icon('left')}</button><strong>${weekRange(dates)}</strong><button data-action="shift-week" data-offset="1" aria-label="下一周">${icon('arrow')}</button></div><div class="selected-date-line"><span>${displayDate(state.date)} · ${weekName(state.date)}</span><label class="date-control">${icon('calendar','icon-sm')} 选日期<input id="history-date" type="date" value="${e(state.date)}" aria-label="选择记录日期"></label></div><div class="week-strip">${dates.map(date => `<button class="week-day ${date === state.date ? 'selected' : ''} ${daySummary(state.data,date).meals.length || daySummary(state.data,date).workouts.length ? 'has-record' : ''}" data-action="choose-date" data-date="${date}" aria-label="${date}"><span>${weekName(date)}</span><strong>${Number(date.slice(-2))}</strong><i class="day-dot"></i></button>`).join('')}</div><div class="stats-row"><div class="stat-cell"><strong>${summary.knownCount ? summary.kcal.toLocaleString() : '—'}</strong><span>${summary.unknownCount ? '已知热量 / 千卡' : '估算热量 / 千卡'}</span></div><div class="stat-cell"><strong>${summary.mealCount}<small> / 3</small></strong><span>已记录餐次</span></div><div class="stat-cell"><strong>${summary.workouts.length}</strong><span>训练记录 / 条</span></div></div>${summary.unknownCount ? `<p class="form-note">当天另有 ${summary.unknownCount} 项食物热量未知，未计入总数。</p>` : ''}<div class="chart-card"><h3>这一周的饮食记录</h3><p>仅汇总已填写的估算热量，不包含运动消耗。</p><div class="chart">${dates.map(date => { const day = daySummary(state.data,date); return `<div class="chart-column ${date === state.date ? 'selected' : ''}"><span class="chart-number">${day.knownCount ? `${day.kcal}${day.unknownCount ? '*' : ''}` : '—'}</span><div class="chart-bar" data-chart-height="${Math.max(3, Math.round(day.kcal / max * 60))}"></div><small>${Number(date.slice(-2))}日</small></div>`; }).join('')}</div><p>* 表示部分食物热量未知。</p></div>${mealSection(summary)}${workoutSection(summary)}<p class="footnote">可以为所选日期补充记录。</p>`;
 }
 function settingsHeader(title, subtitle) {
   return `<header class="preferences-heading"><button class="preferences-back" data-action="settings-back" aria-label="返回我的">${icon('left')}<span>我的</span></button><h1>${title}</h1><p>${subtitle}</p></header>`;
@@ -227,7 +233,7 @@ function renderSettings() {
 }
 function renderAppearance() {
   const selected = themeId(state.settings.theme);
-  return `${settingsHeader('外观', '选一种喜欢的颜色，让日常记录更舒心。')}<section class="appearance-section"><h2>主题配色</h2><div class="theme-grid">${themes.map(theme => `<button class="theme-option ${selected === theme.id ? 'selected' : ''}" data-action="choose-theme" data-theme-id="${theme.id}" aria-pressed="${selected === theme.id}" ${savingAppearance ? 'disabled' : ''}><span class="theme-preview" data-preview="${theme.id}" aria-hidden="true"><span class="preview-title"></span><span class="preview-card"><span class="preview-ring"></span><span class="preview-lines"></span></span><span class="preview-card"><span class="preview-ring"></span><span class="preview-lines"></span></span><span class="preview-tabs"><i></i><i></i><i></i></span></span><span class="theme-caption"><span><strong>${theme.name}</strong><small>${theme.caption}</small></span><span class="theme-check">${icon('check')}</span></span></button>`).join('')}</div></section><p class="preferences-note">点选即生效，下次打开继续使用。<br>首页、历史和记录表单都会使用这套配色。</p>`;
+  return `${settingsHeader('外观', '选一种喜欢的颜色，让日常记录更舒心。')}<section class="appearance-section"><h2>主题配色</h2><div class="theme-grid">${themes.map(theme => `<button class="theme-option ${selected === theme.id ? 'selected' : ''}" data-action="choose-theme" data-theme-id="${theme.id}" aria-pressed="${selected === theme.id}" ${savingAppearance ? 'disabled' : ''}><span class="theme-preview" data-preview="${theme.id}" aria-hidden="true"><span class="preview-title"></span><span class="preview-card"><span class="preview-ring"></span><span class="preview-lines"></span></span><span class="preview-card"><span class="preview-ring"></span><span class="preview-lines"></span></span><span class="preview-tabs"><i></i><i></i><i></i></span></span><span class="theme-caption"><span><strong>${theme.name}</strong><small>${theme.caption}</small></span><span class="theme-check">${icon('check')}</span></span></button>`).join('')}</div></section><p class="preferences-note">点选即生效，下次打开继续使用。<br>首页、日历和记录表单都会使用这套配色。</p>`;
 }
 function applyTheme() { document.documentElement.dataset.theme = themeId(state.settings.theme); }
 async function saveAppearance(value) {
@@ -277,8 +283,8 @@ async function installUpdate() {
 }
 function render() {
   applyTheme();
-  main.innerHTML = state.page === 'today' ? renderToday() : state.page === 'history' ? renderHistory() : renderSettings();
-  document.querySelector('#navigation').innerHTML = [['today','home','今天'],['history','calendar','历史'],['settings','settings','我的']].map(([page,name,label]) => `<button class="nav-button ${state.page === page ? 'active' : ''}" data-action="navigate" data-page="${page}" ${state.page === page ? 'aria-current="page"' : ''}>${icon(name)}${label}</button>`).join('');
+  main.innerHTML = state.page === 'today' ? renderToday() : state.page === 'history' ? renderCalendar() : renderSettings();
+  document.querySelector('#navigation').innerHTML = [['today','home','今天'],['history','calendar','日历'],['settings','settings','我的']].map(([page,name,label]) => `<button class="nav-button ${state.page === page ? 'active' : ''}" data-action="navigate" data-page="${page}" ${state.page === page ? 'aria-current="page"' : ''}>${icon(name)}${label}</button>`).join('');
   // Applied by trusted code because inline styles are prohibited by the CSP.
   document.querySelectorAll('[data-chart-height]').forEach(node => { node.style.height = `${node.dataset.chartHeight}px`; });
 }
@@ -504,7 +510,16 @@ async function importBackup() {
 async function action(name, node) {
   if (busy) return;
   switch (name) {
-    case 'navigate': state.page = node.dataset.page; state.settingsView = 'root'; if (state.page === 'history') state.date = localDate(); render(); window.scrollTo(0,0); break;
+    case 'navigate': state.page = node.dataset.page; state.settingsView = 'root'; if (state.page === 'history') { state.date = localDate(); state.calendarView = 'week'; state.calendarMonth = state.date.slice(0,7); } render(); window.scrollTo(0,0); break;
+    case 'calendar-view': {
+      if (node.dataset.view === 'month') state.calendarMonth = state.date.slice(0,7);
+      else if (state.calendarView === 'month' && state.date.slice(0,7) !== state.calendarMonth) state.date = `${state.calendarMonth}-01`;
+      state.calendarView = node.dataset.view; render(); window.scrollTo(0,0); break;
+    }
+    case 'shift-month': state.calendarMonth = shiftMonth(state.calendarMonth,Number(node.dataset.offset)); render(); break;
+    case 'current-month': state.calendarMonth = localDate().slice(0,7); render(); break;
+    case 'month-metric': state.calendarMetric = node.dataset.metric; render(); break;
+    case 'choose-month-date': state.date = node.dataset.date; state.calendarMonth = state.date.slice(0,7); state.calendarView = 'week'; render(); window.scrollTo(0,0); break;
     case 'open-general': case 'open-appearance': case 'open-ai': case 'open-updates':
       state.settingsView = name.slice(5); render(); window.scrollTo(0,0); break;
     case 'settings-back': state.settingsView = 'root'; render(); window.scrollTo(0,0); break;
@@ -559,8 +574,8 @@ async function action(name, node) {
 }
 document.addEventListener('click', event => { const node = event.target.closest('[data-action]'); if (node) { event.preventDefault(); action(node.dataset.action,node).catch(error => { busy = false; toast(error.message || '操作失败，请重试。'); }); } else if (event.target.classList.contains('overlay') && !confirmResolve) closeSheet(); });
 document.addEventListener('input', event => { if (editor?.kind === 'meal') { collectMeal(); updateReviewTotal(); saveDraft(); } });
-document.addEventListener('change', event => { if (event.target.id === 'history-date' && event.target.value) { state.date = event.target.value; render(); } });
-window.handleBack = () => { if (busy) { toast('正在处理，请稍候。'); return true; } if (overlay.childElementCount) { closeSheet(); return true; } if (state.page === 'settings' && state.settingsView !== 'root') { state.settingsView = 'root'; render(); window.scrollTo(0,0); return true; } if (state.page !== 'today') { state.page = 'today'; render(); return true; } return false; };
+document.addEventListener('change', event => { if (event.target.id === 'history-date' && event.target.value) { state.date = event.target.value; render(); } else if (event.target.id === 'statistics-month' && /^\d{4}-\d{2}$/.test(event.target.value)) { state.calendarMonth = event.target.value; render(); } });
+window.handleBack = () => { if (busy) { toast('正在处理，请稍候。'); return true; } if (overlay.childElementCount) { closeSheet(); return true; } if (state.page === 'settings' && state.settingsView !== 'root') { state.settingsView = 'root'; render(); window.scrollTo(0,0); return true; } if (state.page === 'history' && state.calendarView === 'month') { state.calendarView = 'week'; if (state.date.slice(0,7) !== state.calendarMonth) state.date = `${state.calendarMonth}-01`; render(); window.scrollTo(0,0); return true; } if (state.page !== 'today') { state.page = 'today'; render(); return true; } return false; };
 (async function init() {
   try { const initial = await call('init'); Object.assign(state,initial); render(); if (state.native) checkUpdate(); }
   catch (error) { main.innerHTML = `<div class="fatal"><h2>暂时无法读取记录</h2><p>${e(error.message)}<br>请关闭后重新打开 APP。已有文件不会被自动清空。</p></div>`; }

@@ -1,0 +1,82 @@
+/* Calendar and monthly review share the selected application theme. */
+.calendar-heading { margin-bottom: 18px; }
+.calendar-heading h1 { font-size: 34px; letter-spacing: -1px; }
+.calendar-heading p { color: var(--muted); font-size: 12px; margin-top: 6px; }
+.calendar-tabs { display: flex; padding: 4px; gap: 4px; background: #e4e4ea; border-radius: 13px; margin-bottom: 22px; }
+.calendar-tabs button { flex: 1; font-size: 12px; min-height: 36px; border-radius: 10px; font-weight: 600; color: #707078; }
+.calendar-tabs [aria-pressed="true"] { background: var(--paper); color: var(--green); box-shadow: 0 2px 6px #0000000a; }
+.month-heading { display: flex; align-items: center; gap: 12px; margin: 8px 0 14px; }
+.month-heading-icon { width: 44px; height: 44px; border-radius: 14px; background: var(--green); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.month-heading-icon .icon { width: 25px; height: 25px; }
+.month-heading h2 { font-size: 23px; letter-spacing: -.8px; }
+.month-heading p { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.month-picker { position: relative; margin-left: auto; color: var(--green); display: flex; align-items: center; justify-content: center; width: 40px; height: 44px; border-radius: 12px; background: var(--paper); flex-shrink: 0; }
+.month-picker input { position: absolute; inset: 0; opacity: 0; cursor: pointer; height: 100%; padding: 0; }
+.month-picker:focus-within { outline: 2px solid var(--green); outline-offset: 3px; }
+.month-pager { display: flex; align-items: center; justify-content: space-between; background: var(--paper); padding: 3px 8px; border-radius: 14px; margin-bottom: 16px; }
+.month-pager button { display: flex; align-items: center; justify-content: center; color: var(--green); min-width: 44px; min-height: 40px; font-size: 12px; font-weight: 600; }
+.month-footprint { display: flex; align-items: center; gap: 14px; border-radius: 20px; padding: 17px 14px; background: var(--accent-soft); margin-bottom: 14px; }
+.record-ring { width: 70px; height: 70px; position: relative; flex-shrink: 0; }
+.record-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.record-ring circle { fill: none; stroke-width: 5; }
+.ring-track { stroke: var(--paper); }
+.ring-progress { stroke: var(--green); stroke-linecap: round; }
+.record-ring strong { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 700; color: var(--green); font-variant-numeric: tabular-nums; }
+.record-ring small { font-size: 10px; margin-left: 3px; font-weight: 500; }
+.month-footprint .eyebrow { color: var(--green); font-size: 10px; letter-spacing: .5px; margin-bottom: 5px; }
+.month-footprint h3 { font-size: 14px; font-weight: 650; }
+.month-footprint p:last-child { color: var(--muted); font-size: 11px; margin-top: 7px; }
+.month-metrics { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-bottom: 22px; }
+.month-metric { background: var(--paper); border-radius: 17px; padding: 15px 13px; min-width: 0; }
+.month-metric-label { display: flex; gap: 6px; align-items: center; color: #6b6b73; font-size: 11px; }
+.month-metric-label .icon { color: var(--green); width: 16px; height: 16px; }
+.month-metric strong { display: block; font-size: 26px; color: var(--ink); font-weight: 650; margin: 10px 0 5px; font-variant-numeric: tabular-nums; letter-spacing: -.7px; overflow-wrap: anywhere; }
+.month-metric strong small { font-size: 10px; color: var(--muted); letter-spacing: 0; margin-left: 5px; font-weight: 400; }
+.month-metric p { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.month-calendar-card, .month-trend-card { padding: 17px 12px 14px; border-radius: 20px; background: var(--paper); margin-bottom: 16px; }
+.month-section-title { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 14px; }
+.month-section-title h3 { font-size: 14px; font-weight: 650; }
+.month-section-title > span { color: var(--muted); font-size: 10px; }
+.month-legend { display: flex; gap: 15px; margin-bottom: 15px; color: var(--muted); font-size: 10px; }
+.month-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.month-legend .icon { width: 15px; height: 15px; color: var(--green); }
+.month-legend .day-food .icon, .month-day-icons .day-food { color: #b98125; }
+.month-legend .day-cardio .icon, .month-day-icons .day-cardio { color: #1a8d83; }
+.month-day-icons > span { display: inline-flex; }
+.month-summary-title { margin: 21px 2px 12px; }
+.month-weekdays, .month-grid { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 4px; }
+.month-weekdays { text-align: center; font-size: 10px; color: var(--muted); margin-bottom: 9px; }
+.month-day { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; min-width: 0; min-height: 77px; border: 1.5px solid transparent; padding: 7px 1px 5px; border-radius: 12px; background: var(--bg); gap: 6px; }
+.month-day.recorded { background: var(--accent-soft); }
+.month-day.is-today { border-color: var(--green); }
+.month-day-number { font-size: 12px; font-weight: 550; font-variant-numeric: tabular-nums; }
+.month-day.is-today .month-day-number { color: var(--green); font-weight: 700; }
+.month-day.outside-month { background: transparent; color: #b5b5bc; }
+.month-day-icons { height: 16px; display: flex; justify-content: center; align-items: center; gap: 1px; color: var(--green); }
+.month-day-icons .icon { width: 12px; height: 12px; stroke-width: 1.8; }
+.month-day-energy { min-height: 13px; max-width: 100%; font-size: 9px; font-weight: 550; color: var(--green); white-space: nowrap; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
+.month-day-energy.incomplete { border-bottom: 1px dashed var(--green); }
+.month-calendar-note, .month-chart-note { color: var(--muted); font-size: 10px; line-height: 1.8; margin-top: 12px; }
+.month-empty { padding: 8px 0 18px; display: flex; flex-direction: column; align-items: center; gap: 7px; color: var(--muted); text-align: center; }
+.month-empty .icon { width: 27px; height: 27px; color: var(--green); }
+.month-empty strong { color: var(--ink); font-size: 12px; font-weight: 550; }
+.month-empty p { font-size: 10px; }
+.month-chart-tabs { display: flex; gap: 5px; margin-bottom: 14px; }
+.month-chart-tabs button { flex: 1; padding: 5px 2px; background: var(--bg); border-radius: 9px; min-height: 34px; font-size: 10px; color: var(--muted); }
+.month-chart-tabs [aria-pressed="true"] { background: var(--accent-soft); color: var(--green); font-weight: 650; }
+.month-chart-caption { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-bottom: 5px; }
+.month-trend { display: block; width: 100%; height: auto; }
+.month-trend-bar { fill: var(--green); }
+.month-trend-bar.missing { fill: #dedee5; }
+.month-chart-grid { stroke: var(--line); stroke-width: .7; fill: none; }
+.month-trend text { fill: var(--muted); font-size: 8px; font-family: var(--sans); }
+.month-data-note { color: var(--muted); font-size: 11px; line-height: 1.9; padding: 0 3px; }
+@media (max-width: 360px) {
+  .month-day { min-height: 72px; gap: 5px; }
+  .month-day-icons { gap: 0; }
+  .month-day-icons .icon { width: 10px; height: 10px; }
+  .month-day-energy { font-size: 8px; }
+  .month-metric strong { font-size: 23px; }
+  .month-footprint h3 { font-size: 12px; }
+  .month-heading h2 { font-size: 21px; }
+}

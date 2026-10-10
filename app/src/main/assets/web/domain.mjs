@@ -16,6 +16,44 @@ export function weekDates(date) {
   const monday = shiftDate(date, -((weekday + 6) % 7));
   return Array.from({ length: 7 }, (_, index) => shiftDate(monday, index));
 }
+export function shiftMonth(month, offset) {
+  const date = new Date(`${month}-01T12:00:00`);
+  date.setMonth(date.getMonth() + offset);
+  return localDate(date).slice(0, 7);
+}
+export function monthDates(month) {
+  const first = `${month}-01`, date = new Date(`${first}T12:00:00`);
+  const length = new Date(date.getFullYear(), date.getMonth() + 1, 0, 12).getDate();
+  return Array.from({ length }, (_, index) => shiftDate(first, index));
+}
+export function monthGrid(month) {
+  const dates = monthDates(month), start = weekDates(dates[0])[0];
+  const leading = Math.round((new Date(`${dates[0]}T12:00:00`) - new Date(`${start}T12:00:00`)) / 86400000);
+  return Array.from({ length: Math.ceil((leading + dates.length) / 7) * 7 }, (_, index) => shiftDate(start, index));
+}
+export function monthSummary(data, month) {
+  const buckets = new Map(monthDates(month).map(date => [date, { meals: [], workouts: [] }]));
+  for (const record of data.meals) buckets.get(record.date)?.meals.push(record);
+  for (const record of data.workouts) buckets.get(record.date)?.workouts.push(record);
+  const days = [...buckets].map(([date, records]) => {
+    const summary = daySummary(records, date), strength = records.workouts.filter(record => record.type === 'strength');
+    return { date, ...summary, strengthCount: strength.length,
+      cardioCount: records.workouts.length - strength.length,
+      strengthSets: strength.reduce((sum, record) => sum + record.sets, 0),
+      incompleteMealCount: records.meals.filter(record => !record.foods.length || record.foods.some(food => food.kcal === null || !Number.isFinite(food.kcal))).length };
+  });
+  const sum = field => days.reduce((total, day) => total + day[field], 0);
+  const energyDays = days.filter(day => day.knownCount > 0).length, totalKcal = sum('kcal');
+  return { month, days, dayCount: days.length,
+    recordedDays: days.filter(day => day.meals.length || day.workouts.length).length,
+    mealDays: days.filter(day => day.meals.length).length,
+    trainingDays: days.filter(day => day.workouts.length).length,
+    mealCount: sum('mealCount'), mealRecordCount: days.reduce((total, day) => total + day.meals.length, 0),
+    workoutCount: days.reduce((total, day) => total + day.workouts.length, 0),
+    energyDays, totalKcal, averageKcal: energyDays ? Math.round(totalKcal / energyDays) : null,
+    cardioMinutes: sum('cardioMinutes'), strengthSets: sum('strengthSets'),
+    unknownCount: sum('unknownCount'), pendingCount: sum('pendingCount'), incompleteMealCount: sum('incompleteMealCount') };
+}
 export function daySummary(data, date) {
   const meals = data.meals.filter(record => record.date === date);
   const workouts = data.workouts.filter(record => record.date === date);

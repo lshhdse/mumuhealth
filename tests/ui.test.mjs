@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { mkdir, readFile } from 'node:fs/promises';
+import { checkMonthlyCalendar } from './calendar-ui.mjs';
 const root = 'http://127.0.0.1:4173';
 await mkdir('build/screenshots',{recursive:true});
 const browser = await chromium.launch({ channel:'chrome',headless:true });
@@ -244,5 +245,6 @@ try {
   await previewPage.getByLabel('食物 1 名称').fill('泡面'); await previewPage.getByLabel('食物 1 热量').fill('430'); await previewPage.locator('[data-action="save-meal"]').click();
   await previewPage.waitForFunction(()=>document.querySelector('.meal-record')?.textContent.includes('430'));
   console.log('PASS: 纯文字即时保存、分析失败保留记录、重试与手动补充热量。');
+  await checkMonthlyCalendar(browser, errors);
   assert.deepEqual(errors,[],'不应出现页面脚本错误');
 } finally { await browser.close(); }
