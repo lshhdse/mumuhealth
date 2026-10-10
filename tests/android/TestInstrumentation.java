@@ -134,6 +134,16 @@ public class TestInstrumentation extends Instrumentation {
                     .put("browser_download_url", "https://github.com/lshhdse/mumuhealth/releases/download/build-100002/mumu-health-100002.apk")
                     .put("size", 1234567)));
             check(UpdateClient.parseRelease(release).code == 100002, "发布信息解析与哈希回退");
+            JSONObject update = new JSONObject(release.toString()).put("format", "mumu-update-v1").put("packageName", "com.mumu.health")
+                .put("releaseNotes", "修复更新检查\n新增版本说明");
+            check(UpdateClient.parseManifest(update).notes.equals("修复更新检查\n新增版本说明"), "静态更新信息与版本说明解析");
+            rejects(() -> UpdateClient.parseManifest(new JSONObject(update.toString()).put("packageName", "another.app")), "拒绝其他应用更新信息");
+            rejects(() -> UpdateClient.parseManifest(new JSONObject(update.toString()).put("format", "unknown")), "拒绝未知更新信息格式");
+            JSONObject badAsset = new JSONObject(update.toString());
+            badAsset.getJSONArray("assets").getJSONObject(0).put("browser_download_url", "https://github.com:8080/lshhdse/mumuhealth/releases/download/build-100002/mumu-health-100002.apk");
+            rejects(() -> UpdateClient.parseManifest(badAsset), "拒绝非标准端口的安装包地址");
+            badAsset.getJSONArray("assets").getJSONObject(0).put("browser_download_url", "https://github.com/other/repo/releases/download/build-100002/mumu-health-100002.apk");
+            rejects(() -> UpdateClient.parseManifest(badAsset), "拒绝其他仓库的安装包");
             rejects(() -> UpdateClient.parseRelease(new JSONObject(release.toString()).put("tag_name", "build-100003")), "拒绝版本与下载路径不一致");
             release.getJSONArray("assets").getJSONObject(0).put("browser_download_url", "https://evil.example/update.apk");
             rejects(() -> UpdateClient.parseRelease(release), "拒绝非 GitHub 安装包地址");

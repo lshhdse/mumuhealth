@@ -139,26 +139,32 @@ try {
     window.NativeBridge={call(method,payload,id){
       window.fixtureUpdates.push(method);
       const result = method==='init' ? {data:{version:1,meals:[],workouts:[],templates:[]},settings:{baseUrl:'https://example.test/v1',textModel:'text',visionModel:'vision',hasKey:false},native:true,appVersion:'1.0.4'} :
-        method==='checkUpdate' ? {status:'available',available:true,versionCode:100002,versionName:'沐沐健康 1.0.4.2'} :
+        method==='checkUpdate' ? {status:'available',available:true,versionCode:100004,versionName:'沐沐健康 1.0.6.4',releaseNotes:'- 修复更新检查\n- 新增版本说明 <script>window.badNotes=true</script>'} :
         method==='installUpdate' ? {status:'permission'} : true;
       setTimeout(()=>window.nativeResult(JSON.stringify({id,result,error:null})),10);
     }};
   });
   const updatePage = await updateContext.newPage(); updatePage.on('pageerror',error=>errors.push(error.message)); await updatePage.goto(root);
   await updatePage.getByRole('heading',{name:'发现新版本'}).waitFor();
+  await updatePage.getByRole('button',{name:'立即更新',exact:true}).waitFor();
+  await updatePage.getByRole('button',{name:'取消',exact:true}).waitFor();
+  assert.match(await updatePage.locator('.dialog p').innerText(),/修复更新检查\n- 新增版本说明/);
+  assert.equal(await updatePage.evaluate(()=>window.badNotes),undefined,'更新说明按文字显示');
+  await screenshot('build/screenshots/update-dialog.png',updatePage);
   await updatePage.locator('[data-action="confirm-no"]').click();
   await updatePage.locator('[data-action="navigate"][data-page="settings"]').click();
   await updatePage.locator('[data-action="open-updates"]').getByText('有新版本').waitFor();
   assert.equal(await updatePage.locator('[data-action="check-update"]').count(),0,'更新操作收进二级界面');
   await updatePage.locator('[data-action="open-updates"]').click();
-  await updatePage.getByText('发现新版本 · 沐沐健康 1.0.4.2').waitFor();
+  await updatePage.getByText('发现新版本 · 沐沐健康 1.0.6.4').waitFor();
+  assert.match(await updatePage.locator('.update-notes').innerText(),/修复更新检查/);
   await updatePage.locator('[data-action="check-update"]').click();
   await updatePage.getByRole('heading',{name:'发现新版本'}).waitFor();
   await updatePage.locator('[data-action="confirm-yes"]').click();
   await updatePage.waitForFunction(()=>window.fixtureUpdates.includes('installUpdate'));
   assert.equal(await updatePage.evaluate(()=>window.fixtureUpdates.filter(method=>method==='checkUpdate').length),2);
   await updateContext.close();
-  console.log('PASS: 启动发现更新、稍后再说、我的内再次检查和立即更新。');
+  console.log('PASS: 启动发现更新与版本说明、取消后保留提示、我的内再次检查和立即更新、说明按文字安全显示。');
   const appearanceContext = await browser.newContext({viewport:{width:393,height:852},locale:'zh-CN'});
   await appearanceContext.addInitScript(()=>{
     const config={theme:'plum',baseUrl:'https://example.test/v1',textModel:'text',visionModel:'vision',hasKey:true};

@@ -245,6 +245,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .settings-action .icon { color: var(--green); }
 .settings-action .chevron { color: #c2c2c7; }
 .update-button { width: 100%; margin-top: 10px; }
+.update-notes { background: var(--bg); border-radius: 12px; margin: 9px 0 14px; padding: 14px; }
+.update-notes h3 { color: var(--ink); font-size: 12px; margin-bottom: 7px; }
+.update-notes p { color: #68686f; font-size: 12px; line-height: 1.8; white-space: pre-line; overflow-wrap: anywhere; }
 .settings-about { color: #a1a1a7; }
 .field-label { color: #48484a; font-size: 11px; font-weight: 650; }
 .field-hint, .form-note, .sheet-sublabel { color: #8e8e93; }
@@ -298,6 +301,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); }
 .detail-actions .secondary { color: var(--green); }
 .error { background: #fff0ef; color: #c53d35; }
 .dialog { border-radius: 19px; }
+.dialog p { white-space: pre-line; max-height: 44vh; overflow-y: auto; overflow-wrap: anywhere; }
 .dialog .danger { background: #ff3b30; border-color: #ff3b30; }
 
 .mine-heading { margin-bottom: 22px; }

@@ -9,11 +9,20 @@ const code = 100000 + run;
 const tag = `build-${code}`;
 const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 const version = `${manifest.version}.${run}`;
+const changelog = await readFile(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
+const section = changelog.split(/^## /m).slice(1).find(section => section.split(/\r?\n/, 1)[0].trim() === manifest.version);
+const notes = section?.slice(section.indexOf('\n') + 1).trim();
+if (!notes || notes.length > 6000) throw new Error(`请在 CHANGELOG.md 中填写 ${manifest.version} 的更新说明（最多 6000 字）。`);
 const filename = `mumu-health-${code}.apk`;
 const apk = await readFile(new URL(`../build/${filename}`, import.meta.url));
 const digest = createHash('sha256').update(apk).digest('hex');
+const updateManifest = Buffer.from(JSON.stringify({
+  format: 'mumu-update-v1', packageName: 'com.mumu.health', tag_name: tag, name: `沐沐健康 ${version}`, releaseNotes: notes,
+  assets: [{ name: filename, browser_download_url: `https://github.com/${repository}/releases/download/${tag}/${filename}`, digest: `sha256:${digest}`, size: apk.length }],
+}, null, 2));
 const api = `https://api.github.com/repos/${repository}`;
 const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'mumu-health-release' };
+const releaseBody = `${notes}\n\nAndroid 安装包\n\nSHA256: ${digest}`;
 
 async function request(path, options = {}) {
   const response = await fetch(`${api}${path}`, { ...options, headers: { ...headers, ...options.headers } });
@@ -40,14 +49,17 @@ let draft = existing.find(release => release.tag_name === tag);
 if (draft && !draft.draft) {
   console.log(`${tag} 已发布，继续检查旧版本清理。`);
 } else {
-  if (!draft) draft = await request('/releases', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag_name: tag, target_commitish: process.env.GITHUB_SHA, name: `沐沐健康 ${version}`, body: `Android 安装包\n\nSHA256: ${digest}`, draft: true, prerelease: false }) });
+  if (!draft) draft = await request('/releases', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag_name: tag, target_commitish: process.env.GITHUB_SHA, name: `沐沐健康 ${version}`, body: releaseBody, draft: true, prerelease: false }) });
   for (const asset of draft.assets ?? []) await request(`/releases/assets/${asset.id}`, { method: 'DELETE' });
-  const uploadUrl = draft.upload_url.split('{')[0] + `?name=${filename}`;
-  const upload = await fetch(uploadUrl, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/vnd.android.package-archive', 'Content-Length': String(apk.length) }, body: apk });
-  if (!upload.ok) throw new Error(`上传 APK 失败：${upload.status} ${(await upload.text()).slice(0, 500)}`);
-  const asset = await upload.json();
-  if (asset.digest && asset.digest !== `sha256:${digest}`) throw new Error('GitHub 返回的安装包摘要与本地不一致。');
-  await request(`/releases/${draft.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ draft: false, prerelease: false, make_latest: 'true', body: `Android 安装包\n\nSHA256: ${digest}` }) });
+  for (const [name, bytes, type] of [[filename, apk, 'application/vnd.android.package-archive'], ['update.json', updateManifest, 'application/json']]) {
+    const uploadUrl = draft.upload_url.split('{')[0] + `?name=${name}`;
+    const upload = await fetch(uploadUrl, { method: 'POST', headers: { ...headers, 'Content-Type': type, 'Content-Length': String(bytes.length) }, body: bytes });
+    if (!upload.ok) throw new Error(`上传 ${name.endsWith('.apk') ? 'APK' : '更新信息'} 失败：${upload.status} ${(await upload.text()).slice(0, 500)}`);
+    const asset = await upload.json();
+    const expectedDigest = createHash('sha256').update(bytes).digest('hex');
+    if (asset.digest && asset.digest !== `sha256:${expectedDigest}`) throw new Error(`GitHub 返回的 ${name} 摘要与本地不一致。`);
+  }
+  await request(`/releases/${draft.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ draft: false, prerelease: false, make_latest: 'true', body: releaseBody }) });
   console.log(`已发布 ${tag}，SHA256 ${digest}`);
 }
 

@@ -4,7 +4,7 @@
 
 ## 安装与使用
 
-安装包：`build/mumu-health-v1.0.5.apk`。发送到安卓手机后打开，按手机提示允许该来源安装。支持 Android 8.0 及以上；请保持 Android System WebView 更新。新版沿用原签名，可覆盖安装并保留已有记录与 AI 设置。
+安装包：GitHub 最新 Release，或本地构建的 `build/mumu-health-v1.0.6.apk`。发送到安卓手机后打开，按手机提示允许该来源安装。支持 Android 8.0 及以上；请保持 Android System WebView 更新。新版沿用原签名，可覆盖安装并保留已有记录与 AI 设置。
 
 1. 打开「我的 → AI 配置」，填写服务地址、API Key、文字模型与图片模型，点击「保存设置」。
 2. 可点击「测试文字连接」检查文字模型。图片模型是否可用，需要通过实际图片识别确认。
@@ -55,9 +55,15 @@ AI 热量属于估算。食物份量、做法和用油会影响结果；点开�
 
 ## 从 GitHub 更新
 
-安装本版后，APP 每次打开会检查仓库的最新 GitHub Release。发现更高版本会提示「立即更新 / 稍后再说」；取消后仍可在「我的 → 检查更新」检查并安装。已安装 1.0.4 更新功能的用户可直接检查并覆盖更新；更早版本需先手动安装 GitHub 最新 Release。下载后 APP 会校验文件大小、SHA-256、应用包名、版本号及与当前 APP 相同的签名，再调用安卓系统安装界面。首次更新可能需要授权此 APP 安装未知来源应用；授权后返回「我的」再点「立即更新」。更新过程中手机需要能访问公开的 GitHub Release。
+安装本版后，APP 每次打开会读取最新 Release 附带的 `update.json`，发现更高版本就显示版本号、本次更新内容以及「立即更新 / 取消」。取消后「我的」仍显示新版本提示，可进入「检查更新」查看说明、主动检查并安装。检查与下载均无需 GitHub 登录，手机端不再请求 GitHub REST API，避开按 IP 共享的匿名 API 限额。
 
-`.github/workflows/release.yml` 在 `main` 每次推送后构建一个签名 APK，发布为唯一的最新 Release；**新版本成功发布后**删除旧 Release 和对应标签，因此 GitHub 只保留当前安装包。失败时保留此前可用的版本。版本名称取自 package.json 并追加构建序号，版本编号按构建序号递增。此工作流需要在仓库 `Settings → Secrets and variables → Actions` 配置两个 Repository secrets：
+**1.0.4 / 1.0.5 的检查更新使用旧 API，可能返回 403。受影响用户需要先从 GitHub 最新 Release 手动覆盖安装 1.0.6 一次；之后使用新的更新方式。无需卸载，已有记录与 AI 设置会保留。**
+
+下载后 APP 会校验文件大小、SHA-256、应用包名、版本号及与当前 APP 相同的签名，再调用安卓系统安装界面。首次更新可能需要授权此 APP 安装未知来源应用；授权后返回「我的」再点「立即更新」。更新过程中手机需要能访问公开的 GitHub Release。
+
+`.github/workflows/release.yml` 在 `main` 每次推送后构建一个签名 APK，上传安装包及静态更新信息，确认两份文件上传和校验成功后发布；**新版本成功发布后**删除旧 Release 和对应标签，因此 GitHub 只保留当前版本。任何一份上传或校验失败都会保留此前可用的版本。版本名称取自 package.json 并追加构建序号，版本编号按构建序号递增。
+
+每次发布前，在 `CHANGELOG.md` 的对应版本标题下填写简短中文更新说明；版本号需与 package.json 一致。发布脚本把说明写入 `update.json` 和 GitHub Release，缺少说明则拒绝发布。这些说明会显示在 APP 的更新弹窗和更新详情里。此工作流需要在仓库 `Settings → Secrets and variables → Actions` 配置两个 Repository secrets：
 
 - `MUMU_SIGNING_KEY_BASE64`：当前 `.tools/signing/mumu-personal.jks` 文件的 Base64 内容。
 - `MUMU_SIGN_PASSWORD`：当前 `.tools/signing/credentials.json` 中的 `password`。
@@ -114,8 +120,8 @@ adb shell am instrument -w com.mumu.health/com.mumu.health.TestInstrumentation
 
 ## 本次验证状态
 
-- 已完成：Java 编译、安卓资源与 DEX 打包、APK 签名验证、12 项记录规则测试、4 项发布保留规则测试和浏览器操作测试。
-- 已完成：启动更新提示、「我的」内手动检查与再次更新的界面测试；发布脚本与仅保留最新 Release 的工作流已加入。
+- 已完成：Java 编译、安卓资源与 DEX 打包、APK 签名验证、12 项记录规则测试、6 项发布保留规则测试和浏览器操作测试。
+- 已完成：启动更新弹窗与版本说明、取消后保留提示、「我的」内手动检查与再次安装的界面测试；安装包与更新信息都成功上传后才发布，仍只保留最新 Release。
 - 已完成：「我的」五项菜单及二级设置、五种全局主题的即时切换与重载持久化、保存失败回退、主题与 AI 配置互不覆盖、更新检查保留正在输入的配置；320–430px 手机宽度已检查。
 - 已完成：饮食即时保存、后台分析回填、简洁摘要与明细、失败重试、手动修改、历史补录、未知热量汇总、草稿恢复、有氧/力量记录、设置校验和 320–430px 页面宽度测试。
 - 新增检查：固定周内选择日期、整周前后切换、混合多运动记录的统一校验、单条修改/删除、模板增删改与重载持久化、模板带入，以及模板和训练副本互不影响。

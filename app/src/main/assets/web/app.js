@@ -39,7 +39,7 @@ const themes = [
   { id: 'amber', name: '暖杏', caption: '温暖 · 朴素' }
 ];
 const themeId = value => themes.some(theme => theme.id === value) ? value : 'blue';
-let state = { page: 'today', settingsView: 'root', date: localDate(), data: { version: 1, meals: [], workouts: [], templates: [] }, settings: {}, native: false, appVersion: '1.0.5' };
+let state = { page: 'today', settingsView: 'root', date: localDate(), data: { version: 1, meals: [], workouts: [], templates: [] }, settings: {}, native: false, appVersion: '1.0.6' };
 let savingAppearance = false;
 let updateState = { status: 'idle', available: false };
 let dismissedUpdate = 0;
@@ -94,7 +94,7 @@ function previewData(recoverPending = false) {
   return data;
 }
 async function previewCall(method, payload) {
-  if (method === 'init') return { data: previewData(true), settings: previewConfig, native: false, appVersion: '1.0.5' };
+  if (method === 'init') return { data: previewData(true), settings: previewConfig, native: false, appVersion: '1.0.6' };
   if (method === 'appearance') { previewConfig = { ...previewConfig, theme: themeId(payload.theme) }; localStorage.setItem('mumu.preview.theme', previewConfig.theme); return previewConfig; }
   if (method === 'checkUpdate') return { status: 'preview', available: false };
   if (method === 'installUpdate') throw new Error('请在安卓 APP 中安装更新。');
@@ -244,9 +244,9 @@ function renderAiSettings() {
 function updateSection() {
   const status = updateState.available ? `发现新版本 · ${e(updateState.versionName)}` :
     updateState.status === 'checking' ? '正在检查…' : updateState.status === 'current' ? '已是最新版本' :
-    updateState.status === 'unpublished' ? '暂未发布安装包' : updateState.status === 'preview' ? '仅安卓 APP 可检查' :
+    updateState.status === 'unpublished' ? '更新信息暂未发布' : updateState.status === 'preview' ? '仅安卓 APP 可检查' :
     updateState.status === 'error' ? '检查失败，点此重试' : '点击检查更新';
-  return `<section class="settings-card"><div class="card-title"><h2>软件更新</h2><span class="status-pill ${updateState.available ? '' : 'off'}">${updateState.available ? '有更新' : e(state.appVersion)}</span></div><button class="settings-action" data-action="check-update">${icon('download')}<span>检查更新<small class="field-hint">${status}</small></span>${icon('arrow','chevron')}</button>${updateState.available ? `<button class="primary update-button" data-action="install-update" ${installingUpdate ? 'disabled' : ''}>${installingUpdate ? '正在下载安装包…' : '立即更新'}</button>` : ''}</section>`;
+  return `<section class="settings-card"><div class="card-title"><h2>软件更新</h2><span class="status-pill ${updateState.available ? '' : 'off'}">${updateState.available ? '有更新' : e(state.appVersion)}</span></div><button class="settings-action" data-action="check-update">${icon('download')}<span>检查更新<small class="field-hint">${status}</small></span>${icon('arrow','chevron')}</button>${updateState.available ? `<div class="update-notes"><h3>本次更新</h3><p>${e(updateState.releaseNotes || '此版本未提供更新说明。')}</p></div><button class="primary update-button" data-action="install-update" ${installingUpdate ? 'disabled' : ''}>${installingUpdate ? '正在下载安装包…' : '立即更新'}</button>` : ''}</section>`;
 }
 async function checkUpdate(manual = false) {
   if (updateState.status === 'checking') return;
@@ -255,7 +255,7 @@ async function checkUpdate(manual = false) {
     updateState = await call('checkUpdate'); refreshUpdateUi();
     if (updateState.available && (manual || dismissedUpdate !== updateState.versionCode)) {
       if (overlay.childElementCount) return;
-      const yes = await confirmDialog('发现新版本', `${updateState.versionName} 已发布。现在下载安装吗？`, false, '稍后再说', '立即更新');
+      const yes = await confirmDialog('发现新版本', `${updateState.versionName} 已发布。\n\n本次更新\n${updateState.releaseNotes || '此版本未提供更新说明。'}\n\n现在下载安装吗？`, false, '取消', '立即更新');
       if (yes) await installUpdate(); else dismissedUpdate = updateState.versionCode;
     } else if (manual && !updateState.available) toast(updateState.status === 'current' ? '当前已是最新版本。' : updateState.status === 'preview' ? '请在安卓 APP 中检查更新。' : '暂时没有已发布的新版本。');
   } catch (error) { updateState = { status: 'error', available: false }; refreshUpdateUi(); if (manual) toast(error.message); }

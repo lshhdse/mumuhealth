@@ -20,40 +20,50 @@ import java.security.MessageDigest;
 import java.util.Arrays;
 
 final class UpdateClient {
-    static final String API = "https://api.github.com/repos/lshhdse/mumuhealth/releases/latest";
+    static final String MANIFEST = "https://github.com/lshhdse/mumuhealth/releases/latest/download/update.json";
     static final String AUTHORITY = "com.mumu.health.updates";
     private static final long MAX_APK_BYTES = 100L * 1024 * 1024;
 
     static final class Release {
         final int code;
-        final String name, url, sha256;
+        final String name, url, sha256, notes;
         final long size;
-        Release(int code, String name, String url, String sha256, long size) {
-            this.code = code; this.name = name; this.url = url; this.sha256 = sha256; this.size = size;
+        Release(int code, String name, String url, String sha256, long size, String notes) {
+            this.code = code; this.name = name; this.url = url; this.sha256 = sha256; this.size = size; this.notes = notes;
         }
     }
 
     static JSONObject check(Context context) throws Exception {
-        HttpURLConnection connection = open(API, "application/vnd.github+json");
-        try {
-            int status = connection.getResponseCode();
-            if (status == 404) return new JSONObject().put("status", "unpublished").put("available", false);
-            if (status != 200) throw new Exception("无法检查更新（GitHub 返回 " + status + "）。");
-            byte[] bytes = readLimited(connection.getInputStream(), 512 * 1024);
-            Release release = parseRelease(new JSONObject(new String(bytes, "UTF-8")));
-            int installed = versionCode(context.getPackageManager().getPackageInfo(context.getPackageName(), 0));
-            return new JSONObject().put("status", release.code > installed ? "available" : "current")
-                .put("available", release.code > installed).put("versionCode", release.code)
-                .put("versionName", release.name).put("installedVersionCode", installed);
-        } finally { connection.disconnect(); }
+        Release release = fetchLatest();
+        if (release == null) return new JSONObject().put("status", "unpublished").put("available", false);
+        int installed = versionCode(context.getPackageManager().getPackageInfo(context.getPackageName(), 0));
+        return new JSONObject().put("status", release.code > installed ? "available" : "current")
+            .put("available", release.code > installed).put("versionCode", release.code)
+            .put("versionName", release.name).put("releaseNotes", release.notes).put("installedVersionCode", installed);
     }
 
     static Release latest() throws Exception {
-        HttpURLConnection connection = open(API, "application/vnd.github+json");
+        Release release = fetchLatest();
+        if (release == null) throw new Exception("更新信息尚未发布，请稍后重试。");
+        return release;
+    }
+
+    private static Release fetchLatest() throws Exception {
+        HttpURLConnection connection = open(MANIFEST, "application/json");
         try {
-            if (connection.getResponseCode() != 200) throw new Exception("无法获取最新安装包，请稍后重试。");
-            return parseRelease(new JSONObject(new String(readLimited(connection.getInputStream(), 512 * 1024), "UTF-8")));
+            int status = connection.getResponseCode();
+            if (status == 404) return null;
+            if (status != 200) throw new Exception("无法读取更新信息（HTTP " + status + "），请稍后重试。");
+            if (!trustedDestination(connection.getURL())) throw new Exception("更新信息地址无效。");
+            return parseManifest(new JSONObject(new String(readLimited(connection.getInputStream(), 64 * 1024), "UTF-8")));
         } finally { connection.disconnect(); }
+    }
+
+    static Release parseManifest(JSONObject manifest) throws Exception {
+        if (!"mumu-update-v1".equals(manifest.optString("format")) || !"com.mumu.health".equals(manifest.optString("packageName")))
+            throw new Exception("更新信息格式或应用名称不符。");
+        if (manifest.optString("releaseNotes").length() > 6000) throw new Exception("更新说明过长。");
+        return parseRelease(manifest);
     }
 
     static Release parseRelease(JSONObject release) throws Exception {
@@ -72,7 +82,8 @@ final class UpdateClient {
             URL parsed = new URL(url);
             if (!"https".equals(parsed.getProtocol()) || !"github.com".equals(parsed.getHost()) ||
                 !parsed.getPath().matches("/lshhdse/mumuhealth/releases/download/build-" + code + "/mumu-health-" + code + "\\.apk") ||
-                parsed.getQuery() != null || parsed.getRef() != null || parsed.getUserInfo() != null) {
+                parsed.getQuery() != null || parsed.getRef() != null || parsed.getUserInfo() != null ||
+                (parsed.getPort() != -1 && parsed.getPort() != 443)) {
                 throw new Exception("安装包地址无效。");
             }
             String digest = asset.optString("digest");
@@ -83,7 +94,7 @@ final class UpdateClient {
             if (!digest.matches("sha256:[a-fA-F0-9]{64}")) throw new Exception("安装包缺少 SHA-256 校验值。");
             long size = asset.optLong("size");
             if (size < 1024 || size > MAX_APK_BYTES) throw new Exception("安装包大小无效。");
-            return new Release(code, name, url, digest.substring(7).toLowerCase(), size);
+            return new Release(code, name, url, digest.substring(7).toLowerCase(), size, release.optString("releaseNotes"));
         }
         throw new Exception("最新版本没有可用的安装包。");
     }
@@ -99,7 +110,7 @@ final class UpdateClient {
         try {
             if (connection.getResponseCode() != 200) throw new Exception("下载更新失败，请稍后重试。");
             URL destination = connection.getURL();
-            if (!"https".equals(destination.getProtocol()) || !("github.com".equals(destination.getHost()) || destination.getHost().endsWith(".githubusercontent.com")))
+            if (!trustedDestination(destination))
                 throw new Exception("下载地址不安全。");
             MessageDigest hash = MessageDigest.getInstance("SHA-256");
             long count = 0;
@@ -156,9 +167,15 @@ final class UpdateClient {
         if (!"https".equals(url.getProtocol())) throw new Exception("更新地址必须使用 HTTPS。");
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setConnectTimeout(10000); connection.setReadTimeout(30000);
+        connection.setUseCaches(false);
+        connection.setRequestProperty("Cache-Control", "no-cache");
         connection.setRequestProperty("User-Agent", "MumuHealth-Android");
         connection.setRequestProperty("Accept", accept);
         return connection;
+    }
+    private static boolean trustedDestination(URL url) {
+        return "https".equals(url.getProtocol()) && ("github.com".equals(url.getHost()) || url.getHost().endsWith(".githubusercontent.com")) &&
+            (url.getPort() == -1 || url.getPort() == 443) && url.getUserInfo() == null;
     }
     private static byte[] readLimited(InputStream in, int max) throws Exception {
         try (InputStream input = in; java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
