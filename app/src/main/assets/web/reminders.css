@@ -305,11 +305,6 @@ input:focus, textarea:focus, select:focus { border-color: var(--green); }
 .dialog .danger { background: #ff3b30; border-color: #ff3b30; }
 
 .mine-heading { margin-bottom: 22px; }
-.mine-summary { display: flex; align-items: center; gap: 14px; margin: 0 2px 28px; }
-.mine-avatar { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 17px; color: var(--green); background: var(--accent-soft); }
-.mine-avatar .icon { width: 29px; height: 29px; stroke-width: 2.3; }
-.mine-summary strong { font-size: 17px; font-weight: 650; }
-.mine-summary p { font-size: 11px; color: var(--muted); margin-top: 5px; }
 .menu-section { margin-bottom: 25px; }
 .menu-section h2, .appearance-section h2 { margin: 0 0 9px 12px; color: #77777e; font-size: 11px; font-weight: 550; }
 .menu-group { border-radius: 17px; overflow: hidden; background: var(--paper); box-shadow: 0 2px 11px #151b2b0a; }

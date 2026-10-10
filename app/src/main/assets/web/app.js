@@ -1,5 +1,6 @@
 import { MEALS, localDate, shiftDate, shiftMonth, weekDates, daySummary, mealEnergy, validateMeal, validateWorkout, validateTemplate, upgradeTemplateDefaults, escapeHtml as e } from './domain.mjs';
 import { renderMonthStatistics } from './calendar.mjs';
+import { transitionPage, overlayMotion, reduceMotion } from './motion.mjs';
 import defaultTemplates from './workout-templates.json';
 import legacyTemplates from './workout-templates-legacy.json';
 
@@ -35,6 +36,8 @@ const icon = (name, cls = '') => `<svg viewBox="0 0 24 24" class="icon ${cls}" a
 const newToken = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
 const main = document.querySelector('#main');
 const overlay = document.querySelector('#overlay');
+const windows = overlayMotion(overlay);
+let renderedPage = '';
 const themes = [
   { id: 'blue', name: '晴空蓝', caption: '清爽 · 明亮' },
   { id: 'sage', name: '鼠尾草绿', caption: '自然 · 平静' },
@@ -43,7 +46,7 @@ const themes = [
   { id: 'amber', name: '暖杏', caption: '温暖 · 朴素' }
 ];
 const themeId = value => themes.some(theme => theme.id === value) ? value : 'blue';
-let state = { page: 'today', settingsView: 'root', calendarView: 'week', calendarMonth: localDate().slice(0,7), calendarMetric: 'energy', date: localDate(), data: { version: 1, meals: [], workouts: [], templates: [] }, settings: {}, native: false, appVersion: '1.0.8' };
+let state = { page: 'today', settingsView: 'root', calendarView: 'week', calendarMonth: localDate().slice(0,7), calendarMetric: 'energy', date: localDate(), data: { version: 1, meals: [], workouts: [], templates: [] }, settings: {}, native: false, appVersion: '1.0.9' };
 let savingAppearance = false;
 let updateState = { status: 'idle', available: false };
 let dismissedUpdate = 0;
@@ -102,7 +105,7 @@ function previewData(recoverPending = false) {
   return data;
 }
 async function previewCall(method, payload) {
-  if (method === 'init') return { data: previewData(true), settings: previewConfig, native: false, appVersion: '1.0.8' };
+  if (method === 'init') return { data: previewData(true), settings: previewConfig, native: false, appVersion: '1.0.9' };
   if (method === 'appearance') { previewConfig = { ...previewConfig, theme: themeId(payload.theme) }; localStorage.setItem('mumu.preview.theme', previewConfig.theme); return previewConfig; }
   if (method === 'checkUpdate') return { status: 'preview', available: false };
   if (method === 'installUpdate') throw new Error('请在安卓 APP 中安装更新。');
@@ -156,7 +159,14 @@ async function previewCall(method, payload) {
   if (method === 'openHelp') { window.open('https://help.aliyun.com/zh/model-studio/get-api-key', '_blank', 'noopener'); return true; }
   throw new Error('此功能请在安卓 APP 中使用。');
 }
-function toast(message) { const node = document.querySelector('#toast'); node.textContent = message; node.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => node.classList.remove('show'), 3300); }
+function toast(message) {
+  const node = document.querySelector('#toast');
+  node.textContent = message; node.classList.add('show');
+  document.body.style.setProperty('--notice-height', node.offsetHeight + 'px');
+  document.body.classList.add('has-toast');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { node.classList.remove('show'); document.body.classList.remove('has-toast'); }, 3300);
+}
 function displayDate(date) { const d = new Date(`${date}T12:00:00`); return `${d.getMonth() + 1} 月 ${d.getDate()} 日`; }
 function weekName(date) { return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][new Date(`${date}T12:00:00`).getDay()]; }
 function weekRange(dates) {
@@ -164,11 +174,11 @@ function weekRange(dates) {
   const end = dates[0].slice(0,4) === dates[6].slice(0,4) ? dates[6].slice(5).replace('-','/') : dates[6].split('-').join('/');
   return `${start} — ${end}`;
 }
-function titleBar() { return `<div class="topline"><div class="brand"><span class="brand-mark">${icon('check')}</span><span>沐沐 <small>MUMU</small></span></div><span class="date-label">${displayDate(localDate())} · ${weekName(localDate())}</span></div>`; }
+function titleBar() { return `<div class="topline"><div class="brand"><span class="brand-mark">${icon('check')}</span><span class="brand-copy"><strong>沐沐健康</strong><small>每一餐，每一次行动。</small></span></div><span class="date-label">${displayDate(localDate())}<small>${weekName(localDate())}</small></span></div>`; }
 const botanical = `<svg class="botanical" viewBox="0 0 140 140" aria-hidden="true"><circle cx="73" cy="72" r="50" fill="none" stroke="#c2d4a4" stroke-opacity=".17"/><path d="M51 109C28 72 48 35 99 32c16 42-2 81-48 77Z" fill="#a6bd85" fill-opacity=".14"/><path d="M51 109 88 48M66 84l-9-23m18 8 21-6" fill="none" stroke="#d2dda7" stroke-width="1.7" stroke-linecap="round"/><circle cx="107" cy="96" r="3" fill="#d7dfac" fill-opacity=".7"/><circle cx="34" cy="42" r="2" fill="#d7dfac" fill-opacity=".6"/></svg>`;
 function summaryCard(summary) {
   const value = summary.knownCount ? summary.kcal.toLocaleString() : '—';
-  return `<section class="summary-card" aria-label="当天饮食热量"><p class="eyebrow">今日概览</p><p class="energy-label">${summary.unknownCount || summary.pendingCount ? '已完成估算的热量' : '饮食估算热量'}</p><div class="energy-value">${value}<small>千卡</small></div>${botanical}${summary.unknownCount ? `<p class="summary-note">另有 ${summary.unknownCount} 项食物未填写热量，未计入总数</p>` : ''}${summary.pendingCount ? `<p class="summary-note">${summary.pendingCount} 餐正在分析，完成后自动更新</p>` : ''}<div class="summary-footer"><span><span class="dots">${[0,1,2].map(i => `<i class="dot ${i < summary.mealCount ? 'done' : ''}"></i>`).join('')}</span>已记录 ${summary.mealCount} / 3 餐</span><span>${summary.workouts.length ? `${summary.workouts.length} 条训练记录` : '每一餐，慢慢记录'}</span></div></section>`;
+  return `<section class="summary-card" aria-label="当天饮食热量"><p class="energy-label">${summary.unknownCount || summary.pendingCount ? '已完成估算的热量' : '饮食估算热量'}</p><div class="energy-value">${value}<small>千卡</small></div>${botanical}${summary.unknownCount ? `<p class="summary-note">另有 ${summary.unknownCount} 项食物未填写热量，未计入总数</p>` : ''}${summary.pendingCount ? `<p class="summary-note">${summary.pendingCount} 餐正在分析，完成后自动更新</p>` : ''}<div class="summary-footer"><span><span class="dots">${[0,1,2].map(i => `<i class="dot ${i < summary.mealCount ? 'done' : ''}"></i>`).join('')}</span>已记录 ${summary.mealCount} / 3 餐</span><span>${summary.workouts.length ? `${summary.workouts.length} 项训练` : '尚未记录训练'}</span></div></section>`;
 }
 function mealTitle(record) {
   const title = record.title?.trim();
@@ -200,11 +210,11 @@ function photoUrl(name) { return name.startsWith('data:') ? name : `https://app.
 function renderToday() {
   state.date = localDate();
   const summary = daySummary(state.data, state.date);
-  return `${titleBar()}${state.native ? '' : '<p class="preview-notice">界面预览 · 真实拍照与 AI 识别请使用安卓安装包</p>'}<header class="heading"><p class="eyebrow">我的今日清单</p><h1>今天</h1><p>饮食与训练，都轻松记在这里。</p></header>${summaryCard(summary)}${draftButton()}${mealSection(summary)}${workoutSection(summary)}<p class="footnote">不必完美，记录就是一个好的开始。</p>`;
+  return `${state.native ? '' : '<p class="preview-notice">界面预览 · 真实拍照与 AI 识别请使用安卓安装包</p>'}<header class="heading"><h1>今天</h1><p>饮食与训练，都轻松记在这里。</p></header>${summaryCard(summary)}${draftButton()}${mealSection(summary)}${workoutSection(summary)}<p class="footnote">不必完美，记录就是一个好的开始。</p>`;
 }
 function draftButton() { try { return localStorage.getItem('mumu.draft') ? '<div class="section-title"><span>有一条未保存的饮食草稿</span><button data-action="resume-draft">继续记录 →</button></div>' : ''; } catch { return ''; } }
 function renderCalendar() {
-  return `${titleBar()}<header class="calendar-heading"><h1>日历</h1><p>按天记录，按月回看。</p></header><div class="calendar-tabs" role="group" aria-label="日历视图"><button data-action="calendar-view" data-view="week" aria-pressed="${state.calendarView === 'week'}">按日记录</button><button data-action="calendar-view" data-view="month" aria-pressed="${state.calendarView === 'month'}">月统计</button></div>${state.calendarView === 'month' ? renderMonthStatistics(state.data,state.calendarMonth,localDate(),state.calendarMetric,icon) : `<section id="daily-calendar" aria-label="按日记录">${renderHistory()}</section>`}`;
+  return `<header class="calendar-heading"><h1>日历</h1><p>按天记录，按月回看。</p></header><div class="calendar-tabs" role="group" aria-label="日历视图"><button data-action="calendar-view" data-view="week" aria-pressed="${state.calendarView === 'week'}">按日记录</button><button data-action="calendar-view" data-view="month" aria-pressed="${state.calendarView === 'month'}">月统计</button></div>${state.calendarView === 'month' ? renderMonthStatistics(state.data,state.calendarMonth,localDate(),state.calendarMetric,icon) : `<section id="daily-calendar" aria-label="按日记录">${renderHistory()}</section>`}`;
 }
 function renderHistory() {
   const summary = daySummary(state.data, state.date);
@@ -229,11 +239,11 @@ function renderSettings() {
   if (state.settingsView === 'updates') return `${settingsHeader('检查更新', '每次打开 APP，会自动检查新版本。')}${updateSection()}<p class="preferences-note">可以稍后更新，再从这里继续安装。</p>`;
   const theme = themes.find(theme => theme.id === themeId(state.settings.theme));
   const updateLabel = updateState.status === 'checking' ? '检查中' : updateState.status === 'current' ? '已是最新' : updateState.status === 'error' ? '检查失败' : e(state.appVersion);
-  return `${titleBar()}<header class="heading mine-heading"><h1>我的</h1><p>让记录更合你的习惯。</p></header><div class="mine-summary"><span class="mine-avatar">${icon('check')}</span><div><strong>沐沐健康</strong><p>每一餐，每一次行动。</p></div></div><section class="menu-section"><h2>偏好</h2><div class="menu-group">${menuRow('general','gear','设置','数据与备份')}${menuRow('appearance','palette','外观',theme.name)}${menuRow('ai','spark','AI 配置',state.settings.hasKey ? '已配置' : '待配置')}</div></section><section class="menu-section"><h2>记录与应用</h2><div class="menu-group">${menuRow('templates','dumbbell','训练模板',`${state.data.templates.length} 个模板`)}${menuRow('updates','download','检查更新',updateLabel,updateState.available ? '有新版本' : '')}</div></section><div class="settings-about">沐沐健康 · ${e(state.appVersion)}</div>`;
+  return `<header class="heading mine-heading"><h1>我的</h1><p>让记录更合你的习惯。</p></header><section class="menu-section"><h2>偏好</h2><div class="menu-group">${menuRow('general','gear','设置','数据与备份')}${menuRow('appearance','palette','外观',theme.name)}${menuRow('ai','spark','AI 配置',state.settings.hasKey ? '已配置' : '待配置')}</div></section><section class="menu-section"><h2>记录与应用</h2><div class="menu-group">${menuRow('templates','dumbbell','训练模板',`${state.data.templates.length} 个模板`)}${menuRow('updates','download','检查更新',updateLabel,updateState.available ? '有新版本' : '')}</div></section><div class="settings-about">版本 ${e(state.appVersion)}</div>`;
 }
 function renderAppearance() {
   const selected = themeId(state.settings.theme);
-  return `${settingsHeader('外观', '选一种喜欢的颜色，让日常记录更舒心。')}<section class="appearance-section"><h2>主题配色</h2><div class="theme-grid">${themes.map(theme => `<button class="theme-option ${selected === theme.id ? 'selected' : ''}" data-action="choose-theme" data-theme-id="${theme.id}" aria-pressed="${selected === theme.id}" ${savingAppearance ? 'disabled' : ''}><span class="theme-preview" data-preview="${theme.id}" aria-hidden="true"><span class="preview-title"></span><span class="preview-card"><span class="preview-ring"></span><span class="preview-lines"></span></span><span class="preview-card"><span class="preview-ring"></span><span class="preview-lines"></span></span><span class="preview-tabs"><i></i><i></i><i></i></span></span><span class="theme-caption"><span><strong>${theme.name}</strong><small>${theme.caption}</small></span><span class="theme-check">${icon('check')}</span></span></button>`).join('')}</div></section><p class="preferences-note">点选即生效，下次打开继续使用。<br>首页、日历和记录表单都会使用这套配色。</p>`;
+  return `${settingsHeader('外观', '选一种喜欢的颜色，让日常记录更舒心。')}<section class="appearance-section"><h2>主题配色</h2><div class="theme-grid">${themes.map(theme => `<button class="theme-option ${selected === theme.id ? 'selected' : ''}" data-action="choose-theme" data-theme-id="${theme.id}" aria-pressed="${selected === theme.id}" ${savingAppearance ? 'disabled' : ''}><span class="theme-preview" data-preview="${theme.id}" aria-hidden="true"><span class="preview-title"></span><span class="preview-card"><span class="preview-ring"></span><span class="preview-lines"></span></span><span class="preview-card"><span class="preview-ring"></span><span class="preview-lines"></span></span><span class="preview-tabs"><i></i><i></i><i></i></span></span><span class="theme-caption"><span><strong>${theme.name}</strong><small>${theme.caption}</small></span><span class="theme-check">${icon('check')}</span></span></button>`).join('')}</div></section><p class="preferences-note">点选即生效，下次打开继续使用。</p>`;
 }
 function applyTheme() { document.documentElement.dataset.theme = themeId(state.settings.theme); }
 async function saveAppearance(value) {
@@ -281,29 +291,39 @@ async function installUpdate() {
   } catch (error) { toast(error.message); }
   finally { installingUpdate = false; refreshUpdateUi(); }
 }
-function render() {
+function render({ direction = 1, transition = false } = {}) {
   applyTheme();
+  const pageKey = `${state.page}/${state.page === 'settings' ? state.settingsView : state.page === 'history' ? state.calendarView : ''}`;
+  document.querySelector('#app-header').innerHTML = titleBar();
   main.innerHTML = state.page === 'today' ? renderToday() : state.page === 'history' ? renderCalendar() : renderSettings();
-  document.querySelector('#navigation').innerHTML = [['today','home','今天'],['history','calendar','日历'],['settings','settings','我的']].map(([page,name,label]) => `<button class="nav-button ${state.page === page ? 'active' : ''}" data-action="navigate" data-page="${page}" ${state.page === page ? 'aria-current="page"' : ''}>${icon(name)}${label}</button>`).join('');
+  const navigation = document.querySelector('#navigation');
+  if (!navigation.childElementCount) navigation.innerHTML = [['today','home','今天'],['history','calendar','日历'],['settings','settings','我的']].map(([page,name,label]) => `<button class="nav-button" data-action="navigate" data-page="${page}">${icon(name)}${label}</button>`).join('');
+  navigation.querySelectorAll('.nav-button').forEach(node => {
+    const selected = state.page === node.dataset.page;
+    node.classList.toggle('active',selected);
+    if (selected) node.setAttribute('aria-current','page'); else node.removeAttribute('aria-current');
+  });
   // Applied by trusted code because inline styles are prohibited by the CSP.
   document.querySelectorAll('[data-chart-height]').forEach(node => { node.style.height = `${node.dataset.chartHeight}px`; });
+  if (renderedPage && (renderedPage !== pageKey || transition)) transitionPage(main,direction);
+  renderedPage = pageKey;
 }
-function showSheet(html) { overlay.innerHTML = `<div class="overlay"><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="editor-title">${html}</section></div>`; document.body.classList.add('modal-open'); }
-function closeSheet() {
+function showSheet(html) { windows.present(`<div class="overlay"><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="editor-title">${html}</section></div>`,`${editor?.kind}/${editor?.record?.id || editor?.records?.[0]?.id || editor?.template?.id || ''}`); }
+async function closeSheet() {
+  if (windows.isClosing()) return;
   if (busy) { toast('正在处理，请稍候。'); return; }
   if (!confirmResolve && editor?.kind === 'template') { showTemplateManager(); return; }
-  if (confirmResolve) { const resolve = confirmResolve; confirmResolve = null; resolve(false); }
+  if (confirmResolve) { await finishConfirm(false); return; }
   if (editor?.kind === 'meal') { collectMeal(); saveDraft(); }
-  editor = null; overlay.innerHTML = ''; document.body.classList.remove('modal-open'); render();
+  editor = null; render(); await windows.dismiss();
 }
 function confirmDialog(title, text, danger = false, noLabel = '取消', yesLabel = danger ? '确认' : '继续') {
   return new Promise(resolve => {
     confirmResolve = resolve;
-    overlay.innerHTML = `<div class="overlay dialog-overlay"><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title"><h2 id="confirm-title">${e(title)}</h2><p>${e(text)}</p><div class="button-row"><button class="secondary" data-action="confirm-no">${e(noLabel)}</button><button class="primary ${danger ? 'danger' : ''}" data-action="confirm-yes">${e(yesLabel)}</button></div></section></div>`;
-    document.body.classList.add('modal-open');
+    windows.present(`<div class="overlay dialog-overlay"><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title"><span class="dialog-symbol ${danger ? 'destructive' : ''}">${icon(danger ? 'trash' : 'download')}</span><h2 id="confirm-title">${e(title)}</h2><p>${e(text)}</p><div class="button-row"><button class="secondary" data-action="confirm-no">${e(noLabel)}</button><button class="primary ${danger ? 'danger' : ''}" data-action="confirm-yes">${e(yesLabel)}</button></div></section></div>`,'confirmation');
   });
 }
-function finishConfirm(answer) { const resolve = confirmResolve; confirmResolve = null; overlay.innerHTML = ''; document.body.classList.remove('modal-open'); resolve?.(answer); }
+async function finishConfirm(answer) { if (windows.isClosing()) return; const resolve = confirmResolve; confirmResolve = null; await windows.dismiss(); resolve?.(answer); }
 function foodItem(food,index) { return `<div class="food-item" data-food-index="${index}"><div class="food-top"><input data-food="name" value="${e(food.name)}" maxlength="100" placeholder="食物名称，如：鸡蛋" aria-label="食物 ${index + 1} 名称"><button data-action="remove-food" data-index="${index}" aria-label="删除食物 ${index + 1}">${icon('close')}</button></div><div class="food-bottom"><input class="portion" data-food="portion" value="${e(food.portion)}" maxlength="100" placeholder="份量，如：2 个" aria-label="食物 ${index + 1} 份量"><input class="kcal" data-food="kcal" type="number" inputmode="decimal" min="0" max="20000" value="${food.kcal === null ? '' : e(food.kcal)}" placeholder="可留空" aria-label="食物 ${index + 1} 热量"><span>千卡</span></div></div>`; }
 function openMealDetail(record) { editor = { kind: 'meal-detail', record }; showMealDetail(); }
 function showMealDetail() {
@@ -320,7 +340,7 @@ function openMeal(meal = 'breakfast', existing = null, restored = null) {
 }
 function renderMealEditor() {
   const record = editor.record;
-  showSheet(`<header class="sheet-header"><div><h2 id="editor-title">${record.id ? '编辑饮食' : '记下一餐'}</h2><p>写下食物或拍照，保存后自动估算。</p></div><button class="sheet-close" data-action="close-sheet" aria-label="关闭饮食编辑">${icon('close')}</button></header><div class="sheet-body"><div class="meal-selector">${Object.entries(MEALS).map(([key,meal]) => `<button class="chip ${key === record.meal ? 'active' : ''}" data-action="meal-type" data-meal="${key}">${icon(meal.icon)}${meal.label}</button>`).join('')}</div><label class="field"><span class="field-label">记录日期</span><input id="meal-date" type="date" value="${e(record.date)}"></label><label class="field"><span class="field-label">这一餐吃了什么？</span><textarea id="meal-description" maxlength="3000" placeholder="例如：一碗泡面；或两个鸡蛋、一碗小米粥。">${e(record.description)}</textarea></label><div class="photo-actions"><button class="secondary" data-action="camera">${icon('camera','icon-sm')} 拍一张</button><button class="secondary" data-action="gallery">${icon('image','icon-sm')} 从相册选择</button></div>${record.photo ? `<div class="photo-preview"><img src="${e(photoUrl(record.photo))}" alt="本次餐食照片"><button data-action="remove-photo" aria-label="移除餐食照片">${icon('close')}</button></div>` : ''}<p class="form-note">有文字或照片就可以直接保存，AI 会在后台估算并更新热量。也可在下面手动填写，不走 AI。</p><div class="form-divider"></div><div class="foods-title"><h3>热量明细 <span class="sheet-sublabel">可选</span></h3><button data-action="add-food">${icon('plus','icon-sm')} 手动添加</button></div><div id="food-list">${record.foods.map(foodItem).join('')}</div>${record.assumptions ? `<p class="estimate-note">${e(record.assumptions)}</p>` : ''}<div id="review-total" class="review-total"></div><label class="field"><span class="field-label">备注 <span class="sheet-sublabel">可选</span></span><textarea id="meal-note" maxlength="2000" placeholder="口味、饱腹感，或想留给自己的话…">${e(record.note)}</textarea></label><div id="editor-error" class="error" role="alert"></div>${record.id ? '<button class="delete-record" data-action="delete-record">删除这条饮食记录</button>' : ''}</div><footer class="sheet-footer"><button class="primary" data-action="save-meal">${icon('check','icon-sm')} ${record.id ? '保存修改' : '保存这一餐'}</button></footer>`);
+  showSheet(`<header class="sheet-header"><div><h2 id="editor-title">${record.id ? '编辑饮食' : '记下一餐'}</h2><p>写下食物或拍照，保存后自动估算。</p></div><button class="sheet-close" data-action="close-sheet" aria-label="关闭饮食编辑">${icon('close')}</button></header><div class="sheet-body"><div class="meal-selector">${Object.entries(MEALS).map(([key,meal]) => `<button class="chip ${key === record.meal ? 'active' : ''}" data-action="meal-type" data-meal="${key}">${icon(meal.icon)}${meal.label}</button>`).join('')}</div><label class="field"><span class="field-label">记录日期</span><input id="meal-date" type="date" value="${e(record.date)}"></label><label class="field"><span class="field-label">这一餐吃了什么？</span><textarea id="meal-description" maxlength="3000" placeholder="例如：一碗泡面；或两个鸡蛋、一碗小米粥。">${e(record.description)}</textarea></label><div class="photo-actions"><button class="secondary" data-action="camera">${icon('camera','icon-sm')} 拍一张</button><button class="secondary" data-action="gallery">${icon('image','icon-sm')} 从相册选择</button></div>${record.photo ? `<div class="photo-preview"><img src="${e(photoUrl(record.photo))}" alt="本次餐食照片"><button data-action="remove-photo" aria-label="移除餐食照片">${icon('close')}</button></div>` : ''}<p class="form-note">手动填写热量时，不进行 AI 分析。</p><div class="form-divider"></div><div class="foods-title"><h3>热量明细 <span class="sheet-sublabel">可选</span></h3><button data-action="add-food">${icon('plus','icon-sm')} 手动添加</button></div><div id="food-list">${record.foods.map(foodItem).join('')}</div>${record.assumptions ? `<p class="estimate-note">${e(record.assumptions)}</p>` : ''}<div id="review-total" class="review-total"></div><label class="field"><span class="field-label">备注 <span class="sheet-sublabel">可选</span></span><textarea id="meal-note" maxlength="2000" placeholder="口味、饱腹感，或想留给自己的话…">${e(record.note)}</textarea></label><div id="editor-error" class="error" role="alert"></div>${record.id ? '<button class="delete-record" data-action="delete-record">删除这条饮食记录</button>' : ''}</div><footer class="sheet-footer"><button class="primary" data-action="save-meal">${icon('check','icon-sm')} ${record.id ? '保存修改' : '保存这一餐'}</button></footer>`);
   updateReviewTotal();
 }
 function collectMeal() {
@@ -341,7 +361,7 @@ function openWorkout(existing = null, type = 'cardio') {
 function emptyWorkout(type = 'cardio') { return { type, name: '', minutes: '', sets: '', reps: '', weight: null, note: '' }; }
 function workoutTemplateChoices() {
   const templates = state.data.templates || [];
-  return templates.length ? `<div class="template-intro"><h3>力量训练模板</h3><div class="template-choices">${templates.map(template => `<button class="template-choice" data-action="apply-template" data-id="${e(template.id)}">${icon('dumbbell')} ${e(template.name)}</button>`).join('')}</div><p>点选模板带入动作，本次的组数和重量仍可调整。</p></div>` : '';
+  return templates.length ? `<div class="template-intro"><h3>力量训练模板</h3><div class="template-choices">${templates.map(template => `<button class="template-choice" data-action="apply-template" data-id="${e(template.id)}">${icon('dumbbell')} ${e(template.name)}</button>`).join('')}</div></div>` : '';
 }
 function workoutEntry(record, index) {
   const strength = record.type === 'strength', suffix = index ? `-${index}` : '', entryLabel = editor.kind === 'template' ? '动作' : '运动';
@@ -357,7 +377,7 @@ function workoutEntry(record, index) {
 }
 function renderWorkoutEditor() {
   const existing = Boolean(editor.records[0].id);
-  showSheet(`<header class="sheet-header"><div><h2 id="editor-title">${existing ? '编辑训练' : '记下一次训练'}</h2><p>可以添加多个运动，只记录行动，不计算热量差。</p></div><button class="sheet-close" data-action="close-sheet" aria-label="关闭训练编辑">${icon('close')}</button></header><div class="sheet-body"><label class="field"><span class="field-label">记录日期</span><input id="workout-date" type="date" value="${e(editor.date)}"></label>${workoutTemplateChoices()}<div class="workout-entries">${editor.records.map(workoutEntry).join('')}</div><button class="secondary add-workout-entry" data-action="add-workout-entry">${icon('plus','icon-sm')} 添加运动</button><p class="form-note workout-save-note">共 ${editor.records.length} 项运动，保存后按原来的样式逐条显示。</p><div id="editor-error" class="error" role="alert"></div>${existing ? '<button class="delete-record" data-action="delete-record">删除这条训练记录</button>' : ''}</div><footer class="sheet-footer"><button class="primary" data-action="save-workout">${icon('check','icon-sm')} ${editor.records.length > 1 ? `保存 ${editor.records.length} 项运动` : '保存训练记录'}</button></footer>`);
+  showSheet(`<header class="sheet-header"><div><h2 id="editor-title">${existing ? '编辑训练' : '记下一次训练'}</h2><p>记录有氧或力量，也可以直接使用模板。</p></div><button class="sheet-close" data-action="close-sheet" aria-label="关闭训练编辑">${icon('close')}</button></header><div class="sheet-body"><label class="field"><span class="field-label">记录日期</span><input id="workout-date" type="date" value="${e(editor.date)}"></label>${workoutTemplateChoices()}<div class="workout-entries">${editor.records.map(workoutEntry).join('')}</div><button class="secondary add-workout-entry" data-action="add-workout-entry">${icon('plus','icon-sm')} 添加运动</button><div id="editor-error" class="error" role="alert"></div>${existing ? '<button class="delete-record" data-action="delete-record">删除这条训练记录</button>' : ''}</div><footer class="sheet-footer"><button class="primary" data-action="save-workout">${icon('check','icon-sm')} ${editor.records.length > 1 ? `保存 ${editor.records.length} 项运动` : '保存训练记录'}</button></footer>`);
 }
 function collectWorkout() {
   if (!editor || editor.kind !== 'workout' || !document.querySelector('#workout-date')) return;
@@ -377,7 +397,7 @@ function collectExerciseValues() {
 function showTemplateManager() {
   editor = { kind: 'template-manager' };
   const templates = state.data.templates || [];
-  showSheet(`<header class="sheet-header"><div><h2 id="editor-title">力量训练模板</h2><p>把常用的动作与重量，留给下一次训练。</p></div><button class="sheet-close" data-action="close-sheet" aria-label="关闭模板列表">${icon('close')}</button></header><div class="sheet-body"><div class="template-intro"><h3>按部位，整理你的训练</h3><p>模板可修改动作、组数、次数与重量。保存后，在记录训练时点选即可带入。预设重量留空，请按自己的习惯填写。</p></div>${templates.length ? `<div class="template-list">${templates.map(template => `<button class="settings-action" data-action="edit-template" data-id="${e(template.id)}">${icon('dumbbell')}<span class="template-body">${e(template.name)}<small>${template.exercises.length} 个动作 · ${e(template.exercises.map(exercise => exercise.name).join('、'))}</small></span>${icon('arrow','chevron')}</button>`).join('')}</div>` : '<p class="template-empty">还没有模板。可以先添加一个“练腿”或“练背”模板。</p>'}<button class="secondary add-workout-entry" data-action="add-template">${icon('plus','icon-sm')} 添加模板</button></div>`);
+  showSheet(`<header class="sheet-header"><div><h2 id="editor-title">力量训练模板</h2><p>把常用的动作与重量，留给下一次训练。</p></div><button class="sheet-close" data-action="close-sheet" aria-label="关闭模板列表">${icon('close')}</button></header><div class="sheet-body"><p class="form-note">点选部位，编辑动作、组数、次数与重量。</p>${templates.length ? `<div class="template-list">${templates.map(template => `<button class="settings-action" data-action="edit-template" data-id="${e(template.id)}">${icon('dumbbell')}<span class="template-body">${e(template.name)}<small>${template.exercises.length} 个动作 · ${e(template.exercises.map(exercise => exercise.name).join('、'))}</small></span>${icon('arrow','chevron')}</button>`).join('')}</div>` : '<p class="template-empty">还没有模板。可以先添加一个“练腿”或“练背”模板。</p>'}<button class="secondary add-workout-entry" data-action="add-template">${icon('plus','icon-sm')} 添加模板</button></div>`);
 }
 function openTemplate(existing = null) {
   const template = JSON.parse(JSON.stringify(existing || { name:'', exercises:[emptyWorkout('strength')] }));
@@ -419,7 +439,7 @@ function applyWorkoutTemplate(id) {
   document.querySelector(`[data-workout-index="${existing.length}"]`).scrollIntoView({block:'start'});
   toast(`已带入「${template.name}」的 ${template.exercises.length} 个动作。`);
 }
-function showError(message, settings = false) { const node = document.querySelector(settings ? '#settings-error' : '#editor-error'); if (node) { node.textContent = message; if (message) node.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } else toast(message); }
+function showError(message, settings = false) { const node = document.querySelector(settings ? '#settings-error' : '#editor-error'); if (node) { node.textContent = message; if (message) node.scrollIntoView({ block: 'nearest', behavior: reduceMotion() ? 'auto' : 'smooth' }); } else toast(message); }
 function lock(value) { busy = value; document.querySelectorAll(overlay.childElementCount ? '#overlay button, #overlay input, #overlay textarea' : '.settings-card button').forEach(node => { node.disabled = value; }); }
 function putRecord(kind, record) {
   const index = state.data[kind].findIndex(item => item.id === record.id);
@@ -459,7 +479,7 @@ async function saveMeal() {
   }
   const autoAnalyze = prepareMealForSave(editor.record, editor.original);
   lock(true); showError('');
-  try { const record = await call('saveMeal',editor.record); putRecord('meals',record); localStorage.removeItem('mumu.draft'); editor = null; lock(false); closeSheet(); toast(autoAnalyze ? '已保存，AI 正在后台估算。' : '这一餐已保存。'); }
+  try { const record = await call('saveMeal',editor.record); putRecord('meals',record); localStorage.removeItem('mumu.draft'); editor = null; lock(false); await closeSheet(); toast(autoAnalyze ? '已保存，AI 正在后台估算。' : '这一餐已保存。'); }
   catch (error) { showError(error.message); lock(false); }
 }
 async function retryMeal() {
@@ -479,7 +499,7 @@ async function saveWorkout() {
     if (error) return showError(`运动 ${index + 1}：${error}`);
   }
   lock(true); showError('');
-  try { const records = await call('saveWorkouts',{ records: editor.records }); records.forEach(record => putRecord('workouts',record)); editor = null; lock(false); closeSheet(); toast(records.length > 1 ? `${records.length} 项运动已保存。` : '训练记录已保存。'); }
+  try { const records = await call('saveWorkouts',{ records: editor.records }); records.forEach(record => putRecord('workouts',record)); editor = null; lock(false); await closeSheet(); toast(records.length > 1 ? `${records.length} 项运动已保存。` : '训练记录已保存。'); }
   catch (error) { showError(error.message); lock(false); }
 }
 async function pickPhoto(camera) { collectMeal(); lock(true); showError(''); try { const result = await call('photo',{ camera }); if (result) { editor.record.photo = result.name; saveDraft(); } lock(false); renderMealEditor(); } catch (error) { lock(false); showError(error.message); } }
@@ -508,28 +528,33 @@ async function importBackup() {
   catch (error) { busy = false; toast(error.message); }
 }
 async function action(name, node) {
-  if (busy) return;
+  if (busy || windows.isClosing()) return;
   switch (name) {
-    case 'navigate': state.page = node.dataset.page; state.settingsView = 'root'; if (state.page === 'history') { state.date = localDate(); state.calendarView = 'week'; state.calendarMonth = state.date.slice(0,7); } render(); window.scrollTo(0,0); break;
+    case 'navigate': {
+      const pages = ['today','history','settings'], direction = pages.indexOf(node.dataset.page) >= pages.indexOf(state.page) ? 1 : -1;
+      state.page = node.dataset.page; state.settingsView = 'root';
+      if (state.page === 'history') { state.date = localDate(); state.calendarView = 'week'; state.calendarMonth = state.date.slice(0,7); }
+      render({direction}); window.scrollTo(0,0); break;
+    }
     case 'calendar-view': {
       if (node.dataset.view === 'month') state.calendarMonth = state.date.slice(0,7);
       else if (state.calendarView === 'month' && state.date.slice(0,7) !== state.calendarMonth) state.date = `${state.calendarMonth}-01`;
       state.calendarView = node.dataset.view; render(); window.scrollTo(0,0); break;
     }
-    case 'shift-month': state.calendarMonth = shiftMonth(state.calendarMonth,Number(node.dataset.offset)); render(); break;
+    case 'shift-month': state.calendarMonth = shiftMonth(state.calendarMonth,Number(node.dataset.offset)); render({transition:true,direction:Number(node.dataset.offset)}); break;
     case 'current-month': state.calendarMonth = localDate().slice(0,7); render(); break;
     case 'month-metric': state.calendarMetric = node.dataset.metric; render(); break;
     case 'choose-month-date': state.date = node.dataset.date; state.calendarMonth = state.date.slice(0,7); state.calendarView = 'week'; render(); window.scrollTo(0,0); break;
     case 'open-general': case 'open-appearance': case 'open-ai': case 'open-updates':
       state.settingsView = name.slice(5); render(); window.scrollTo(0,0); break;
-    case 'settings-back': state.settingsView = 'root'; render(); window.scrollTo(0,0); break;
+    case 'settings-back': state.settingsView = 'root'; render({direction:-1}); window.scrollTo(0,0); break;
     case 'choose-theme': await saveAppearance(node.dataset.themeId); break;
     case 'add-meal': openMeal(node.dataset.meal); break;
     case 'view-meal': openMealDetail(state.data.meals.find(record => record.id === node.dataset.id)); break;
     case 'edit-meal': openMeal('',state.data.meals.find(record => record.id === node.dataset.id)); break;
     case 'retry-meal': await retryMeal(); break;
     case 'resume-draft': { try { const draft = JSON.parse(localStorage.getItem('mumu.draft')); if (draft) openMeal(draft.meal,null,draft); } catch { localStorage.removeItem('mumu.draft'); render(); toast('草稿无法读取，请重新添加。'); } break; }
-    case 'close-sheet': closeSheet(); break;
+    case 'close-sheet': await closeSheet(); break;
     case 'meal-type': collectMeal(); editor.record.meal = node.dataset.meal; saveDraft(); renderMealEditor(); break;
     case 'add-food': collectMeal(); if (editor.record.foods.length >= 30) return showError('最多添加 30 种食物。'); editor.record.foods.push({ name:'',portion:'',kcal:null }); renderMealEditor(); document.querySelector('.food-item:last-child input').focus(); break;
     case 'remove-food': collectMeal(); editor.record.foods.splice(Number(node.dataset.index),1); saveDraft(); renderMealEditor(); break;
@@ -557,9 +582,9 @@ async function action(name, node) {
     case 'delete-template': await deleteTemplate(); break;
     case 'apply-template': applyWorkoutTemplate(node.dataset.id); break;
     case 'delete-record': await deleteRecord(); break;
-    case 'confirm-yes': finishConfirm(true); break;
-    case 'confirm-no': finishConfirm(false); break;
-    case 'shift-week': state.date = shiftDate(state.date,Number(node.dataset.offset) * 7); render(); break;
+    case 'confirm-yes': await finishConfirm(true); break;
+    case 'confirm-no': await finishConfirm(false); break;
+    case 'shift-week': state.date = shiftDate(state.date,Number(node.dataset.offset) * 7); render({transition:true,direction:Number(node.dataset.offset)}); break;
     case 'choose-date': state.date = node.dataset.date; render(); break;
     case 'toggle-key': { const key = document.querySelector('#api-key'); key.type = key.type === 'password' ? 'text' : 'password'; break; }
     case 'save-settings': await saveSettings(); break;
@@ -575,7 +600,7 @@ async function action(name, node) {
 document.addEventListener('click', event => { const node = event.target.closest('[data-action]'); if (node) { event.preventDefault(); action(node.dataset.action,node).catch(error => { busy = false; toast(error.message || '操作失败，请重试。'); }); } else if (event.target.classList.contains('overlay') && !confirmResolve) closeSheet(); });
 document.addEventListener('input', event => { if (editor?.kind === 'meal') { collectMeal(); updateReviewTotal(); saveDraft(); } });
 document.addEventListener('change', event => { if (event.target.id === 'history-date' && event.target.value) { state.date = event.target.value; render(); } else if (event.target.id === 'statistics-month' && /^\d{4}-\d{2}$/.test(event.target.value)) { state.calendarMonth = event.target.value; render(); } });
-window.handleBack = () => { if (busy) { toast('正在处理，请稍候。'); return true; } if (overlay.childElementCount) { closeSheet(); return true; } if (state.page === 'settings' && state.settingsView !== 'root') { state.settingsView = 'root'; render(); window.scrollTo(0,0); return true; } if (state.page === 'history' && state.calendarView === 'month') { state.calendarView = 'week'; if (state.date.slice(0,7) !== state.calendarMonth) state.date = `${state.calendarMonth}-01`; render(); window.scrollTo(0,0); return true; } if (state.page !== 'today') { state.page = 'today'; render(); return true; } return false; };
+window.handleBack = () => { if (windows.isClosing()) return true; if (busy) { toast('正在处理，请稍候。'); return true; } if (overlay.childElementCount) { closeSheet(); return true; } if (state.page === 'settings' && state.settingsView !== 'root') { state.settingsView = 'root'; render({direction:-1}); window.scrollTo(0,0); return true; } if (state.page === 'history' && state.calendarView === 'month') { state.calendarView = 'week'; if (state.date.slice(0,7) !== state.calendarMonth) state.date = `${state.calendarMonth}-01`; render(); window.scrollTo(0,0); return true; } if (state.page !== 'today') { state.page = 'today'; render({direction:-1}); return true; } return false; };
 (async function init() {
   try { const initial = await call('init'); Object.assign(state,initial); render(); if (state.native) checkUpdate(); }
   catch (error) { main.innerHTML = `<div class="fatal"><h2>暂时无法读取记录</h2><p>${e(error.message)}<br>请关闭后重新打开 APP。已有文件不会被自动清空。</p></div>`; }

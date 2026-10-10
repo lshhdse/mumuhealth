@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { mkdir, readFile } from 'node:fs/promises';
 import { checkMonthlyCalendar } from './calendar-ui.mjs';
+import { checkPolishedUi } from './polish-ui.mjs';
 const root = 'http://127.0.0.1:4173';
 await mkdir('build/screenshots',{recursive:true});
 const browser = await chromium.launch({ channel:'chrome',headless:true });
@@ -14,6 +15,8 @@ async function screenshot(file, target = page) {
 }
 page.on('pageerror',error=>errors.push(error.message));
 const click = async action => {
+  // A closing window intentionally keeps its DOM during the exit animation.
+  await page.locator('.overlay.closing').waitFor({state:'detached'});
   const dialogAction = page.locator(`#overlay [data-action="${action}"]`);
   return (await dialogAction.count() ? dialogAction : page.locator(`[data-action="${action}"]`)).first().click();
 };
@@ -107,7 +110,7 @@ try {
   assert.equal((await stored()).templates.find(template=>template.id==='default-back').exercises[0].weight,25);
   await page.reload(); await page.locator('[data-action="navigate"][data-page="settings"]').click(); await click('open-templates'); await screenshot('build/screenshots/templates.png'); await page.locator('[data-action="edit-template"][data-id="default-back"]').click(); assert.equal(await page.getByLabel('动作 1 重量').inputValue(),'25'); await click('open-templates');
   await click('add-template'); await page.locator('#template-name').fill('自重上肢'); await page.getByLabel('动作 1 名称').fill('俯卧撑'); await click('save-template'); await visible('动作 1：组数'); assert.equal((await stored()).templates.length,5); await page.getByLabel('动作 1 组数').fill('3'); await page.getByLabel('动作 1 每组次数').fill('15'); await click('save-template');
-  await page.locator('[data-action="edit-template"]').filter({hasText:'自重上肢'}).click(); await click('delete-template'); await click('confirm-no'); await page.locator('#template-name').waitFor(); await click('delete-template'); await click('confirm-yes'); await page.getByText('按部位，整理你的训练').waitFor(); assert.equal((await stored()).templates.length,5); await click('close-sheet');
+  await page.locator('[data-action="edit-template"]').filter({hasText:'自重上肢'}).click(); await click('delete-template'); await click('confirm-no'); await page.locator('#template-name').waitFor(); await click('delete-template'); await click('confirm-yes'); await page.locator('.template-list').waitFor(); assert.equal((await stored()).templates.length,5); await click('close-sheet');
   await page.locator('[data-action="navigate"][data-page="today"]').click(); await click('add-workout'); await page.locator('[data-action="apply-template"][data-id="default-back"]').click(); assert.equal(await page.locator('.workout-entry').count(),4); assert.equal(await page.getByLabel('运动 1 重量').inputValue(),'25'); await page.getByLabel('运动 1 重量').fill('30'); await click('save-workout'); await visible('力量 · 4 组 × 10 次 · 30 kg'); assert.equal((await stored()).templates.find(template=>template.id==='default-back').exercises[0].weight,25);
   await page.locator('[data-action="navigate"][data-page="settings"]').click(); await click('open-templates'); await page.locator('[data-action="edit-template"][data-id="default-back"]').click(); await page.getByLabel('动作 1 重量').fill('35'); await click('save-template'); assert.equal((await stored()).workouts.find(record=>record.name==='反手高位下拉').weight,30); await click('close-sheet');
   await page.locator('[data-action="navigate"][data-page="today"]').click();
@@ -246,5 +249,18 @@ try {
   await previewPage.waitForFunction(()=>document.querySelector('.meal-record')?.textContent.includes('430'));
   console.log('PASS: 纯文字即时保存、分析失败保留记录、重试与手动补充热量。');
   await checkMonthlyCalendar(browser, errors);
+  await checkPolishedUi(browser, errors);
   assert.deepEqual(errors,[],'不应出现页面脚本错误');
+} catch (error) {
+  await page.screenshot({path:'build/screenshots/ui-failure.png'}).catch(()=>{});
+  console.error('UI state:',await page.evaluate(()=>({
+    inert:document.querySelector('.app-shell').inert,
+    overlay:document.querySelector('#overlay [role="dialog"]')?.className,
+    heading:document.querySelector('#main h1')?.textContent,
+    scroll:[scrollY,document.querySelector('.app-shell').scrollTop],
+    bodyClass:document.body.className,
+    pointerEvents:['.app-shell','#main','[data-action="open-templates"]','[data-action="add-workout"]'].map(selector=>[selector,getComputedStyle(document.querySelector(selector)||document.body).pointerEvents]),
+    animations:document.getAnimations().map(a=>({state:a.playState,target:a.effect?.target?.className}))
+  })).catch(()=>({})));
+  throw error;
 } finally { await browser.close(); }
