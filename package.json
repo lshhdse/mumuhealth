@@ -6,7 +6,7 @@
   "scripts": {
     "build:web": "node tools/build-web.mjs",
     "preview": "node tools/preview.mjs",
-    "test": "node --test tests/domain.test.mjs",
+    "test": "node --test tests/domain.test.mjs tests/release.test.mjs",
     "test:ui": "node tests/ui.test.mjs"
   },
   "devDependencies": { "playwright": "1.58.2", "esbuild": "0.25.12" }

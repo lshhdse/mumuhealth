@@ -32,23 +32,23 @@ async function allReleases() {
 }
 
 const existing = await allReleases();
-if (existing.some(release => release.tag_name === tag && !release.draft)) {
-  console.log(`${tag} 已发布，跳过重复发布。`);
-  process.exit(0);
-}
 if (existing.some(release => /^build-\d+$/.test(release.tag_name) && Number(release.tag_name.slice(6)) > code && !release.draft)) {
   throw new Error('仓库已有更新的安装包，拒绝将旧构建设为最新版。');
 }
 let draft = existing.find(release => release.tag_name === tag);
-if (!draft) draft = await request('/releases', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag_name: tag, target_commitish: process.env.GITHUB_SHA, name: `沐沐健康 ${version}`, body: `Android 安装包\n\nSHA256: ${digest}`, draft: true, prerelease: false }) });
-for (const asset of draft.assets ?? []) await request(`/releases/assets/${asset.id}`, { method: 'DELETE' });
-const uploadUrl = draft.upload_url.split('{')[0] + `?name=${filename}`;
-const upload = await fetch(uploadUrl, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/vnd.android.package-archive', 'Content-Length': String(apk.length) }, body: apk });
-if (!upload.ok) throw new Error(`上传 APK 失败：${upload.status} ${(await upload.text()).slice(0, 500)}`);
-const asset = await upload.json();
-if (asset.digest && asset.digest !== `sha256:${digest}`) throw new Error('GitHub 返回的安装包摘要与本地不一致。');
-await request(`/releases/${draft.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ draft: false, prerelease: false, make_latest: 'true', body: `Android 安装包\n\nSHA256: ${digest}` }) });
-console.log(`已发布 ${tag}，SHA256 ${digest}`);
+if (draft && !draft.draft) {
+  console.log(`${tag} 已发布，继续检查旧版本清理。`);
+} else {
+  if (!draft) draft = await request('/releases', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag_name: tag, target_commitish: process.env.GITHUB_SHA, name: `沐沐健康 ${version}`, body: `Android 安装包\n\nSHA256: ${digest}`, draft: true, prerelease: false }) });
+  for (const asset of draft.assets ?? []) await request(`/releases/assets/${asset.id}`, { method: 'DELETE' });
+  const uploadUrl = draft.upload_url.split('{')[0] + `?name=${filename}`;
+  const upload = await fetch(uploadUrl, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/vnd.android.package-archive', 'Content-Length': String(apk.length) }, body: apk });
+  if (!upload.ok) throw new Error(`上传 APK 失败：${upload.status} ${(await upload.text()).slice(0, 500)}`);
+  const asset = await upload.json();
+  if (asset.digest && asset.digest !== `sha256:${digest}`) throw new Error('GitHub 返回的安装包摘要与本地不一致。');
+  await request(`/releases/${draft.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ draft: false, prerelease: false, make_latest: 'true', body: `Android 安装包\n\nSHA256: ${digest}` }) });
+  console.log(`已发布 ${tag}，SHA256 ${digest}`);
+}
 
 for (const old of await allReleases()) {
   if (old.id === draft.id) continue;
