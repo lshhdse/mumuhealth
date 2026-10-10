@@ -1,0 +1,35 @@
+[
+  {
+    "id": "default-legs", "name": "练腿",
+    "exercises": [
+      { "type": "strength", "name": "深蹲", "sets": 3, "reps": 12, "weight": null, "note": "" },
+      { "type": "strength", "name": "腿举", "sets": 3, "reps": 12, "weight": null, "note": "" },
+      { "type": "strength", "name": "腿弯举", "sets": 3, "reps": 12, "weight": null, "note": "" },
+      { "type": "strength", "name": "提踵", "sets": 3, "reps": 15, "weight": null, "note": "" }
+    ]
+  },
+  {
+    "id": "default-back", "name": "练背",
+    "exercises": [
+      { "type": "strength", "name": "高位下拉", "sets": 3, "reps": 12, "weight": null, "note": "" },
+      { "type": "strength", "name": "坐姿划船", "sets": 3, "reps": 12, "weight": null, "note": "" },
+      { "type": "strength", "name": "哑铃划船", "sets": 3, "reps": 12, "weight": null, "note": "" }
+    ]
+  },
+  {
+    "id": "default-chest", "name": "练胸",
+    "exercises": [
+      { "type": "strength", "name": "卧推", "sets": 3, "reps": 12, "weight": null, "note": "" },
+      { "type": "strength", "name": "上斜哑铃卧推", "sets": 3, "reps": 12, "weight": null, "note": "" },
+      { "type": "strength", "name": "夹胸", "sets": 3, "reps": 12, "weight": null, "note": "" }
+    ]
+  },
+  {
+    "id": "default-shoulders", "name": "练肩",
+    "exercises": [
+      { "type": "strength", "name": "推肩", "sets": 3, "reps": 12, "weight": null, "note": "" },
+      { "type": "strength", "name": "侧平举", "sets": 3, "reps": 12, "weight": null, "note": "" },
+      { "type": "strength", "name": "反向飞鸟", "sets": 3, "reps": 12, "weight": null, "note": "" }
+    ]
+  }
+]

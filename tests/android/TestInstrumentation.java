@@ -90,19 +90,52 @@ public class TestInstrumentation extends Instrumentation {
             batchSaved.getJSONObject(0).put("minutes", 45);
             batchStore.saveWorkouts(new JSONArray().put(batchSaved.getJSONObject(0)));
             check(batchStore.snapshot().getJSONArray("workouts").length() == 2 && batchStore.snapshot().getJSONArray("workouts").getJSONObject(0).getInt("minutes") == 45, "批量保存后独立修改不重复");
-            check(batchStore.snapshot().getJSONArray("templates").length() == 4, "旧数据加载默认部位模板");
+            check(batchStore.snapshot().getJSONArray("templates").length() == 5, "旧数据加载默认部位模板");
             JSONObject templateExercise = new JSONObject(workout.toString()); templateExercise.remove("date");
             JSONObject template = batchStore.save("templates", new JSONObject().put("name", "自定义练腿").put("exercises", new JSONArray().put(templateExercise)));
-            check(new RecordStore(batchContext).snapshot().getJSONArray("templates").length() == 5, "模板持久化");
+            check(new RecordStore(batchContext).snapshot().getJSONArray("templates").length() == 6, "模板持久化");
             check(!template.getJSONArray("exercises").getJSONObject(0).has("id"), "模板动作不携带已记录运动编号");
             JSONObject oldBackup = new JSONObject().put("version", 1).put("meals", new JSONArray()).put("workouts", new JSONArray());
             batchStore.restore(oldBackup);
-            check(batchStore.snapshot().getJSONArray("templates").length() == 5, "恢复旧版备份保留当前模板");
+            check(batchStore.snapshot().getJSONArray("templates").length() == 6, "恢复旧版备份保留当前模板");
             JSONObject backupWithTemplates = batchStore.snapshot();
             batchStore.delete("templates", template.getString("id"));
-            check(batchStore.snapshot().getJSONArray("templates").length() == 4, "模板删除");
+            check(batchStore.snapshot().getJSONArray("templates").length() == 5, "模板删除");
             batchStore.restore(backupWithTemplates);
-            check(new RecordStore(batchContext).snapshot().getJSONArray("templates").length() == 5, "新版备份恢复模板");
+            check(new RecordStore(batchContext).snapshot().getJSONArray("templates").length() == 6, "新版备份恢复模板");
+            File migrationDir = new File(testDir, "template-migration"); migrationDir.mkdirs();
+            Context migrationContext = new ContextWrapper(stable) { @Override public File getFilesDir() { return migrationDir; } };
+            JSONArray legacy;
+            try (java.io.InputStream in = stable.getAssets().open("web/workout-templates-legacy.json")) { legacy = new JSONArray(AiClient.read(in, 100000)); }
+            JSONObject editedBack = legacy.getJSONObject(1);
+            editedBack.put("name", "练背 A").put("updatedAt", 123);
+            editedBack.getJSONArray("exercises").getJSONObject(0).put("sets", 4).put("weight", 25);
+            JSONObject ownTemplate = new JSONObject(editedBack.toString()).put("id", "own-template").put("name", "个人模板");
+            legacy.put(ownTemplate);
+            JSONObject oldRecords = new JSONObject().put("version", 1).put("meals", new JSONArray().put(saved)).put("workouts", new JSONArray().put(workout)).put("templates", legacy);
+            try (FileOutputStream output = new FileOutputStream(new File(migrationDir, "records.json"))) { output.write(oldRecords.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+            RecordStore migratedStore = new RecordStore(migrationContext);
+            JSONObject migrated = migratedStore.snapshot(); JSONArray migratedTemplates = migrated.getJSONArray("templates");
+            check(migrated.optInt("templateDefaultsVersion") == 2 && migratedTemplates.length() == 7, "旧模板升级五组并保留两组自定义");
+            String[] parts = {"背", "胸", "肩", "臀", "腿"};
+            for (int i = 0; i < parts.length; i++) {
+                JSONObject preset = migratedTemplates.getJSONObject(i);
+                check(preset.getString("name").equals(parts[i]) && preset.getJSONArray("exercises").length() == 4, "新版部位顺序与四项动作");
+                for (int j = 0; j < 4; j++) {
+                    JSONObject exercise = preset.getJSONArray("exercises").getJSONObject(j);
+                    check(exercise.getInt("sets") == 5 && exercise.getInt("reps") == 12 && exercise.isNull("weight"), "每项默认五组十二次且重量留空");
+                }
+            }
+            check(migratedTemplates.getJSONObject(5).getString("name").equals("练背 A") && !migratedTemplates.getJSONObject(5).getString("id").equals("default-back"), "编辑过的旧预设改编号保留");
+            check(migratedTemplates.getJSONObject(5).getJSONArray("exercises").getJSONObject(0).getInt("weight") == 25 && migratedTemplates.getJSONObject(6).getString("id").equals("own-template"), "旧重量和自建编号保留");
+            check(migrated.getJSONArray("meals").toString().equals(oldRecords.getJSONArray("meals").toString()) && migrated.getJSONArray("workouts").toString().equals(oldRecords.getJSONArray("workouts").toString()), "升级不修改饮食和训练历史");
+            check(new RecordStore(migrationContext).snapshot().toString().equals(migrated.toString()), "升级结果写盘且重启不再生成副本");
+            migratedStore.delete("templates", "default-glutes");
+            JSONObject deletedBackup = migratedStore.snapshot();
+            migratedStore.restore(deletedBackup);
+            check(new RecordStore(migrationContext).snapshot().getJSONArray("templates").length() == 6, "恢复新版备份保留预设删除");
+            migratedStore.restore(oldRecords);
+            check(new RecordStore(migrationContext).snapshot().getJSONArray("templates").length() == 7, "恢复旧模板备份自动升级且保留编辑");
             SettingsStore settings = new SettingsStore(stable);
             check(settings.publicSettings().getString("theme").equals("blue"), "旧设置默认蓝色主题");
             String testKey = "sk-NATIVE-TEST-ONLY-not-a-real-key";

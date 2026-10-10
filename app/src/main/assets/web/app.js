@@ -1,5 +1,6 @@
-import { MEALS, localDate, shiftDate, weekDates, daySummary, mealEnergy, validateMeal, validateWorkout, validateTemplate, escapeHtml as e } from './domain.mjs';
+import { MEALS, localDate, shiftDate, weekDates, daySummary, mealEnergy, validateMeal, validateWorkout, validateTemplate, upgradeTemplateDefaults, escapeHtml as e } from './domain.mjs';
 import defaultTemplates from './workout-templates.json';
+import legacyTemplates from './workout-templates-legacy.json';
 
 const paths = {
   leaf: '<path d="M5 19C2 10 7 3 20 4c1 12-5 17-15 15Z"/><path d="m5 19 10-10m-5 5V9m0 5h6"/>',
@@ -39,7 +40,7 @@ const themes = [
   { id: 'amber', name: '暖杏', caption: '温暖 · 朴素' }
 ];
 const themeId = value => themes.some(theme => theme.id === value) ? value : 'blue';
-let state = { page: 'today', settingsView: 'root', date: localDate(), data: { version: 1, meals: [], workouts: [], templates: [] }, settings: {}, native: false, appVersion: '1.0.6' };
+let state = { page: 'today', settingsView: 'root', date: localDate(), data: { version: 1, meals: [], workouts: [], templates: [] }, settings: {}, native: false, appVersion: '1.0.7' };
 let savingAppearance = false;
 let updateState = { status: 'idle', available: false };
 let dismissedUpdate = 0;
@@ -82,8 +83,12 @@ const previewKey = 'mumu.preview.records.v1';
 let previewConfig = { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', textModel: 'qwen-plus', visionModel: 'qwen3-vl-plus', hasKey: false, theme: themeId(localStorage.getItem('mumu.preview.theme')) };
 function previewData(recoverPending = false) {
   const raw = localStorage.getItem(previewKey);
-  const data = raw ? JSON.parse(raw) : { version: 1, meals: [], workouts: [] };
-  if (!Array.isArray(data.templates)) data.templates = JSON.parse(JSON.stringify(defaultTemplates));
+  let data = raw ? JSON.parse(raw) : { version: 1, meals: [], workouts: [] };
+  const upgraded = upgradeTemplateDefaults(data, defaultTemplates, legacyTemplates, newToken);
+  if (upgraded !== data) {
+    data = upgraded;
+    localStorage.setItem(previewKey, JSON.stringify(data));
+  }
   if (recoverPending) {
     let changed = false;
     for (const meal of data.meals) if (meal.analysisStatus === 'pending') {
@@ -94,7 +99,7 @@ function previewData(recoverPending = false) {
   return data;
 }
 async function previewCall(method, payload) {
-  if (method === 'init') return { data: previewData(true), settings: previewConfig, native: false, appVersion: '1.0.6' };
+  if (method === 'init') return { data: previewData(true), settings: previewConfig, native: false, appVersion: '1.0.7' };
   if (method === 'appearance') { previewConfig = { ...previewConfig, theme: themeId(payload.theme) }; localStorage.setItem('mumu.preview.theme', previewConfig.theme); return previewConfig; }
   if (method === 'checkUpdate') return { status: 'preview', available: false };
   if (method === 'installUpdate') throw new Error('请在安卓 APP 中安装更新。');

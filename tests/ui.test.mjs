@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 const root = 'http://127.0.0.1:4173';
 await mkdir('build/screenshots',{recursive:true});
 const browser = await chromium.launch({ channel:'chrome',headless:true });
@@ -20,6 +20,24 @@ async function visible(text) { await page.getByText(text,{exact:false}).first().
 try {
   await page.goto(root);
   await page.getByRole('heading',{name:'今天',exact:true}).waitFor();
+  const defaults=JSON.parse(await readFile('app/src/main/assets/web/workout-templates.json','utf8'));
+  await click('add-workout'); await page.locator('[data-type="strength"]').first().click();
+  assert.deepEqual(await page.locator('[data-action="apply-template"]').allTextContents(),defaults.map(template=>' '+template.name));
+  await click('close-sheet');
+  for (const template of defaults) {
+    await click('add-workout'); await page.locator('[data-action="apply-template"][data-id="'+template.id+'"]').click();
+    assert.equal(await page.locator('.workout-entry').count(),4);
+    for (let index=0;index<4;index++) {
+      assert.equal(await page.getByLabel(`运动 ${index+1} 名称`).inputValue(),template.exercises[index].name);
+      assert.equal(await page.getByLabel(`运动 ${index+1} 组数`).inputValue(),'5');
+      assert.equal(await page.getByLabel(`运动 ${index+1} 每组次数`).inputValue(),'12');
+      assert.equal(await page.getByLabel(`运动 ${index+1} 重量`).inputValue(),'');
+    }
+    await click('close-sheet');
+  }
+  await page.locator('[data-action="navigate"][data-page="settings"]').click(); await click('open-templates');
+  await screenshot('build/screenshots/default-templates.png'); await click('close-sheet');
+  await page.locator('[data-action="navigate"][data-page="today"]').click();
   await page.getByRole('button',{name:'添加早餐',exact:true}).click();
   await click('save-meal'); await visible('请描述吃了什么、添加照片，或手动添加食物。');
   await page.locator('#meal-description').fill('两个鸡蛋、一碗粥');
@@ -84,13 +102,13 @@ try {
   await page.locator('[data-action="navigate"][data-page="settings"]').click(); await page.getByText('鼠尾草绿',{exact:true}).waitFor();
   await click('open-ai'); await click('save-settings'); assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),'sage','AI 设置不能重置主题'); await click('settings-back');
   await click('open-templates'); await page.locator('[data-action="edit-template"][data-id="default-back"]').click(); await page.locator('#template-name').fill('练背 A'); await page.getByLabel('动作 1 组数').fill('4'); await page.getByLabel('动作 1 每组次数').fill('10'); await page.getByLabel('动作 1 重量').fill('25');
-  await page.locator('[data-action="remove-template-exercise"][data-index="1"]').click(); await click('add-template-exercise'); await page.getByLabel('动作 3 名称').fill('硬拉'); await page.getByLabel('动作 3 组数').fill('3'); await page.getByLabel('动作 3 每组次数').fill('8'); await page.getByLabel('动作 3 重量').fill('50'); await screenshot('build/screenshots/template-editor.png'); await click('save-template'); await page.locator('[data-action="edit-template"][data-id="default-back"]').waitFor();
+  await page.locator('[data-action="remove-template-exercise"][data-index="1"]').click(); await click('add-template-exercise'); await page.getByLabel('动作 4 名称').fill('硬拉'); await page.getByLabel('动作 4 组数').fill('3'); await page.getByLabel('动作 4 每组次数').fill('8'); await page.getByLabel('动作 4 重量').fill('50'); await screenshot('build/screenshots/template-editor.png'); await click('save-template'); await page.locator('[data-action="edit-template"][data-id="default-back"]').waitFor();
   assert.equal((await stored()).templates.find(template=>template.id==='default-back').exercises[0].weight,25);
   await page.reload(); await page.locator('[data-action="navigate"][data-page="settings"]').click(); await click('open-templates'); await screenshot('build/screenshots/templates.png'); await page.locator('[data-action="edit-template"][data-id="default-back"]').click(); assert.equal(await page.getByLabel('动作 1 重量').inputValue(),'25'); await click('open-templates');
-  await click('add-template'); await page.locator('#template-name').fill('自重上肢'); await page.getByLabel('动作 1 名称').fill('俯卧撑'); await click('save-template'); await visible('动作 1：组数'); assert.equal((await stored()).templates.length,4); await page.getByLabel('动作 1 组数').fill('3'); await page.getByLabel('动作 1 每组次数').fill('15'); await click('save-template');
-  await page.locator('[data-action="edit-template"]').filter({hasText:'自重上肢'}).click(); await click('delete-template'); await click('confirm-no'); await page.locator('#template-name').waitFor(); await click('delete-template'); await click('confirm-yes'); await page.getByText('按部位，整理你的训练').waitFor(); assert.equal((await stored()).templates.length,4); await click('close-sheet');
-  await page.locator('[data-action="navigate"][data-page="today"]').click(); await click('add-workout'); await page.locator('[data-action="apply-template"][data-id="default-back"]').click(); assert.equal(await page.locator('.workout-entry').count(),3); assert.equal(await page.getByLabel('运动 1 重量').inputValue(),'25'); await page.getByLabel('运动 1 重量').fill('30'); await click('save-workout'); await visible('力量 · 4 组 × 10 次 · 30 kg'); assert.equal((await stored()).templates.find(template=>template.id==='default-back').exercises[0].weight,25);
-  await page.locator('[data-action="navigate"][data-page="settings"]').click(); await click('open-templates'); await page.locator('[data-action="edit-template"][data-id="default-back"]').click(); await page.getByLabel('动作 1 重量').fill('35'); await click('save-template'); assert.equal((await stored()).workouts.find(record=>record.name==='高位下拉').weight,30); await click('close-sheet');
+  await click('add-template'); await page.locator('#template-name').fill('自重上肢'); await page.getByLabel('动作 1 名称').fill('俯卧撑'); await click('save-template'); await visible('动作 1：组数'); assert.equal((await stored()).templates.length,5); await page.getByLabel('动作 1 组数').fill('3'); await page.getByLabel('动作 1 每组次数').fill('15'); await click('save-template');
+  await page.locator('[data-action="edit-template"]').filter({hasText:'自重上肢'}).click(); await click('delete-template'); await click('confirm-no'); await page.locator('#template-name').waitFor(); await click('delete-template'); await click('confirm-yes'); await page.getByText('按部位，整理你的训练').waitFor(); assert.equal((await stored()).templates.length,5); await click('close-sheet');
+  await page.locator('[data-action="navigate"][data-page="today"]').click(); await click('add-workout'); await page.locator('[data-action="apply-template"][data-id="default-back"]').click(); assert.equal(await page.locator('.workout-entry').count(),4); assert.equal(await page.getByLabel('运动 1 重量').inputValue(),'25'); await page.getByLabel('运动 1 重量').fill('30'); await click('save-workout'); await visible('力量 · 4 组 × 10 次 · 30 kg'); assert.equal((await stored()).templates.find(template=>template.id==='default-back').exercises[0].weight,25);
+  await page.locator('[data-action="navigate"][data-page="settings"]').click(); await click('open-templates'); await page.locator('[data-action="edit-template"][data-id="default-back"]').click(); await page.getByLabel('动作 1 重量').fill('35'); await click('save-template'); assert.equal((await stored()).workouts.find(record=>record.name==='反手高位下拉').weight,30); await click('close-sheet');
   await page.locator('[data-action="navigate"][data-page="today"]').click();
   await page.getByRole('button',{name:'添加晚餐',exact:true}).click(); await page.locator('#meal-description').fill('一碗面，明天再补份量'); await click('close-sheet'); await click('resume-draft'); assert.equal(await page.locator('#meal-description').inputValue(),'一碗面，明天再补份量'); await click('close-sheet');
   for (const width of [320,360,393,430]) { await page.setViewportSize({width,height:852}); await page.locator('[data-action="navigate"][data-page="history"]').click(); assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth),`历史页面在 ${width}px 下不应横向溢出`); await click('add-workout'); await page.locator('[data-action="apply-template"][data-id="default-back"]').click(); assert.ok(await page.evaluate(()=>document.querySelector('.sheet').scrollWidth <= window.innerWidth),`训练模板在 ${width}px 下不应横向溢出`); await click('close-sheet'); await page.locator('[data-action="navigate"][data-page="today"]').click(); await page.getByRole('button',{name:'添加早餐',exact:true}).click(); assert.ok(await page.evaluate(()=>document.querySelector('.sheet').scrollWidth <= window.innerWidth),`表单在 ${width}px 下不应横向溢出`); await click('close-sheet'); }
@@ -102,6 +120,28 @@ try {
   console.log('PASS: 我的五项菜单、分层设置与返回、五种全局主题、主题重载持久化、AI 设置保留配色和 4 种屏幕宽度。');
   console.log('PASS: 手动饮食、未知热量、修改、持久化、有氧/力量、历史补录、删除确认、设置校验、草稿恢复、4种屏幕宽度。');
   console.log('PASS: 固定周日期选择与整周跳转、多运动混合记录、整体校验、独立编辑/删除、模板管理/持久化/带入，以及模板与训练副本互不影响。');
+
+  const migrationContext=await browser.newContext({viewport:{width:393,height:852},locale:'zh-CN'});
+  const migrationPage=await migrationContext.newPage();
+  await migrationPage.goto(root); await migrationPage.getByRole('heading',{name:'今天',exact:true}).waitFor();
+  const legacy=JSON.parse(await readFile('app/src/main/assets/web/workout-templates-legacy.json','utf8'));
+  const edited=legacy.find(template=>template.id==='default-back'); edited.name='练背 A'; edited.exercises[0].sets=4; edited.exercises[0].weight=25;
+  const own={...structuredClone(edited),id:'own-template',name:'个人模板'};
+  const oldData={version:1,meals:[],workouts:[{id:'old-workout',date:'2026-10-08',type:'strength',name:'高位下拉',sets:4,reps:10,weight:30,note:''}],templates:[...legacy,own]};
+  await migrationPage.evaluate(data=>localStorage.setItem('mumu.preview.records.v1',JSON.stringify(data)),oldData);
+  await migrationPage.reload(); await migrationPage.getByRole('heading',{name:'今天',exact:true}).waitFor();
+  const migrated=await migrationPage.evaluate(()=>JSON.parse(localStorage.getItem('mumu.preview.records.v1')));
+  assert.deepEqual(migrated.templates.slice(0,5),defaults); assert.equal(migrated.templates.length,7); assert.equal(migrated.templateDefaultsVersion,2);
+  assert.deepEqual(migrated.templates[5].exercises,edited.exercises); assert.notEqual(migrated.templates[5].id,'default-back');
+  assert.deepEqual(migrated.templates[6],own); assert.deepEqual(migrated.workouts,oldData.workouts);
+  await migrationPage.reload(); await migrationPage.getByRole('heading',{name:'今天',exact:true}).waitFor();
+  assert.deepEqual(await migrationPage.evaluate(()=>JSON.parse(localStorage.getItem('mumu.preview.records.v1'))),migrated);
+  await migrationPage.locator('[data-action="navigate"][data-page="settings"]').click(); await migrationPage.locator('[data-action="open-templates"]').click();
+  assert.equal(await migrationPage.locator('[data-action="edit-template"]').count(),7);
+  await migrationPage.locator('[data-action="edit-template"][data-id="default-glutes"]').click();
+  assert.equal(await migrationPage.getByLabel('动作 4 名称').inputValue(),'髋外展髋内收');
+  await migrationContext.close();
+  console.log('PASS: 五个新版部位模板、二十个动作和 5×12 默认值，旧数据自动迁移、编辑副本和历史记录保留，重复打开不重复迁移。');
 
   // AI success and error fixtures exercise only the UI; they do not claim a real provider call.
   const nativeContext = await browser.newContext({viewport:{width:393,height:852},deviceScaleFactor:2,locale:'zh-CN',timezoneId:'Asia/Shanghai'});

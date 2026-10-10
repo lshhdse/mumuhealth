@@ -72,6 +72,26 @@ export function validateTemplate(template) {
   }
   return '';
 }
+// Compare user-editable content; saving a template only adds updatedAt metadata.
+function templateContent(template) {
+  return JSON.stringify({ name: template.name, exercises: template.exercises.map(exercise => ({
+    type: exercise.type ?? 'strength', name: exercise.name, sets: exercise.sets,
+    reps: exercise.reps, weight: exercise.weight ?? null, note: exercise.note ?? ''
+  })) });
+}
+export function upgradeTemplateDefaults(data, defaults, legacy, makeId) {
+  if (data.templateDefaultsVersion >= 2 && Array.isArray(data.templates)) return data;
+  const templates = JSON.parse(JSON.stringify(defaults));
+  const presetIds = new Set([...defaults, ...legacy].map(template => template.id));
+  const presets = [...defaults, ...legacy];
+  for (const template of data.templates ?? []) {
+    if (!presetIds.has(template.id)) templates.push(JSON.parse(JSON.stringify(template)));
+    else if (!presets.some(preset => preset.id === template.id && templateContent(preset) === templateContent(template))) {
+      templates.push({ ...JSON.parse(JSON.stringify(template)), id: makeId() });
+    }
+  }
+  return { ...data, templateDefaultsVersion: 2, templates };
+}
 export function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 }

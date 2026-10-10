@@ -12,20 +12,67 @@ import java.util.UUID;
 
 public final class RecordStore {
     private final AtomicFile file;
+    private final JSONArray defaultTemplates, legacyTemplates;
     private JSONObject data;
     public RecordStore(Context context) throws Exception {
         file = new AtomicFile(new File(context.getFilesDir(), "records.json"));
+        defaultTemplates = readTemplates(context, "web/workout-templates.json");
+        legacyTemplates = readTemplates(context, "web/workout-templates-legacy.json");
         if (file.getBaseFile().exists()) {
             data = new JSONObject(new String(file.readFully(), StandardCharsets.UTF_8));
             if (data.optInt("version") != 1 || data.optJSONArray("meals") == null || data.optJSONArray("workouts") == null)
                 throw new Exception("记录文件格式有误，原文件已保留。");
         } else data = new JSONObject().put("version", 1).put("meals", new JSONArray()).put("workouts", new JSONArray());
-        if (!data.has("templates")) {
-            try (java.io.InputStream in = context.getAssets().open("web/workout-templates.json")) {
-                data.put("templates", new JSONArray(AiClient.read(in, 100000)));
-            }
-        }
+        if (!data.has("templates")) data.put("templates", new JSONArray());
         if (data.optJSONArray("templates") == null) throw new Exception("模板文件格式有误，原文件已保留。");
+        JSONObject upgraded = upgradeTemplateDefaults(data);
+        if (upgraded != data && file.getBaseFile().exists()) write(upgraded);
+        else data = upgraded;
+    }
+    private static JSONArray readTemplates(Context context, String path) throws Exception {
+        try (java.io.InputStream in = context.getAssets().open(path)) {
+            return new JSONArray(AiClient.read(in, 100000));
+        }
+    }
+    private static JSONObject templateWithId(JSONArray templates, String id) throws Exception {
+        for (int i = 0; i < templates.length(); i++) {
+            JSONObject template = templates.getJSONObject(i);
+            if (template.getString("id").equals(id)) return template;
+        }
+        return null;
+    }
+    // Saving adds metadata; only user-editable fields identify a changed preset.
+    private static boolean sameTemplateContent(JSONObject template, JSONObject preset) throws Exception {
+        if (preset == null || !template.optString("name").equals(preset.optString("name"))) return false;
+        JSONArray exercises = template.getJSONArray("exercises"), defaults = preset.getJSONArray("exercises");
+        if (exercises.length() != defaults.length()) return false;
+        for (int i = 0; i < exercises.length(); i++) {
+            JSONObject exercise = exercises.getJSONObject(i), baseline = defaults.getJSONObject(i);
+            for (String field : new String[]{"type", "name", "note"}) {
+                String fallback = field.equals("type") ? "strength" : "";
+                if (!exercise.optString(field, fallback).equals(baseline.optString(field, fallback))) return false;
+            }
+            for (String field : new String[]{"sets", "reps"})
+                if (exercise.optDouble(field, Double.NaN) != baseline.optDouble(field, Double.NaN)) return false;
+            boolean blankWeight = !exercise.has("weight") || exercise.isNull("weight");
+            boolean baselineBlank = !baseline.has("weight") || baseline.isNull("weight");
+            if (blankWeight != baselineBlank || !blankWeight && exercise.optDouble("weight", Double.NaN) != baseline.optDouble("weight", Double.NaN)) return false;
+        }
+        return true;
+    }
+    private JSONObject upgradeTemplateDefaults(JSONObject source) throws Exception {
+        if (source.optInt("templateDefaultsVersion") >= 2) return source;
+        JSONObject upgraded = new JSONObject(source.toString());
+        JSONArray templates = new JSONArray(defaultTemplates.toString()), previous = source.getJSONArray("templates");
+        for (int i = 0; i < previous.length(); i++) {
+            JSONObject template = previous.getJSONObject(i);
+            String id = template.getString("id");
+            JSONObject current = templateWithId(defaultTemplates, id), legacy = templateWithId(legacyTemplates, id);
+            if (current == null && legacy == null) templates.put(new JSONObject(template.toString()));
+            else if (!sameTemplateContent(template, current) && !sameTemplateContent(template, legacy))
+                templates.put(new JSONObject(template.toString()).put("id", UUID.randomUUID().toString()));
+        }
+        return upgraded.put("templateDefaultsVersion", 2).put("templates", templates);
     }
     public synchronized JSONObject snapshot() throws Exception { return new JSONObject(data.toString()); }
     private void write(JSONObject next) throws Exception {
@@ -197,7 +244,8 @@ public final class RecordStore {
     }
     public synchronized void restore(JSONObject imported) throws Exception {
         if (imported.optInt("version") != 1) throw new Exception("不支持此备份版本。");
-        JSONObject clean = new JSONObject().put("version", 1);
+        JSONObject clean = new JSONObject().put("version", 1).put("templateDefaultsVersion",
+            imported.has("templates") ? imported.optInt("templateDefaultsVersion", 0) : data.optInt("templateDefaultsVersion", 0));
         for (String kind : new String[]{"meals", "workouts", "templates"}) {
             JSONArray list = kind.equals("templates") && !imported.has(kind) ? data.getJSONArray(kind) : imported.getJSONArray(kind), result = new JSONArray();
             if (list.length() > 50000) throw new Exception("备份记录过多。");
@@ -209,6 +257,6 @@ public final class RecordStore {
             }
             clean.put(kind, result);
         }
-        write(clean);
+        write(upgradeTemplateDefaults(clean));
     }
 }

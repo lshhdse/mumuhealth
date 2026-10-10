@@ -1,35 +1,192 @@
 [
   {
-    "id": "default-legs", "name": "练腿",
+    "id": "default-back",
+    "name": "背",
     "exercises": [
-      { "type": "strength", "name": "深蹲", "sets": 3, "reps": 12, "weight": null, "note": "" },
-      { "type": "strength", "name": "腿举", "sets": 3, "reps": 12, "weight": null, "note": "" },
-      { "type": "strength", "name": "腿弯举", "sets": 3, "reps": 12, "weight": null, "note": "" },
-      { "type": "strength", "name": "提踵", "sets": 3, "reps": 15, "weight": null, "note": "" }
+      {
+        "type": "strength",
+        "name": "反手高位下拉",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      },
+      {
+        "type": "strength",
+        "name": "坐姿绳索划船",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      },
+      {
+        "type": "strength",
+        "name": "中距离对握高位下拉",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      },
+      {
+        "type": "strength",
+        "name": "中距离对握开肘划船",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      }
     ]
   },
   {
-    "id": "default-back", "name": "练背",
+    "id": "default-chest",
+    "name": "胸",
     "exercises": [
-      { "type": "strength", "name": "高位下拉", "sets": 3, "reps": 12, "weight": null, "note": "" },
-      { "type": "strength", "name": "坐姿划船", "sets": 3, "reps": 12, "weight": null, "note": "" },
-      { "type": "strength", "name": "哑铃划船", "sets": 3, "reps": 12, "weight": null, "note": "" }
+      {
+        "type": "strength",
+        "name": "飞鸟机夹下胸",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      },
+      {
+        "type": "strength",
+        "name": "史密斯上斜推胸",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      },
+      {
+        "type": "strength",
+        "name": "坐姿夹胸",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      },
+      {
+        "type": "strength",
+        "name": "哑铃推胸",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      }
     ]
   },
   {
-    "id": "default-chest", "name": "练胸",
+    "id": "default-shoulders",
+    "name": "肩",
     "exercises": [
-      { "type": "strength", "name": "卧推", "sets": 3, "reps": 12, "weight": null, "note": "" },
-      { "type": "strength", "name": "上斜哑铃卧推", "sets": 3, "reps": 12, "weight": null, "note": "" },
-      { "type": "strength", "name": "夹胸", "sets": 3, "reps": 12, "weight": null, "note": "" }
+      {
+        "type": "strength",
+        "name": "坐姿史密斯推肩",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      },
+      {
+        "type": "strength",
+        "name": "侧平举",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      },
+      {
+        "type": "strength",
+        "name": "绳索面拉",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      },
+      {
+        "type": "strength",
+        "name": "哑铃前平举",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      }
     ]
   },
   {
-    "id": "default-shoulders", "name": "练肩",
+    "id": "default-glutes",
+    "name": "臀",
     "exercises": [
-      { "type": "strength", "name": "推肩", "sets": 3, "reps": 12, "weight": null, "note": "" },
-      { "type": "strength", "name": "侧平举", "sets": 3, "reps": 12, "weight": null, "note": "" },
-      { "type": "strength", "name": "反向飞鸟", "sets": 3, "reps": 12, "weight": null, "note": "" }
+      {
+        "type": "strength",
+        "name": "保加利亚蹲",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      },
+      {
+        "type": "strength",
+        "name": "罗马尼亚硬拉",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      },
+      {
+        "type": "strength",
+        "name": "龙门架旋转",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      },
+      {
+        "type": "strength",
+        "name": "髋外展髋内收",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "default-legs",
+    "name": "腿",
+    "exercises": [
+      {
+        "type": "strength",
+        "name": "保加利亚蹲",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      },
+      {
+        "type": "strength",
+        "name": "罗马尼亚硬拉",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      },
+      {
+        "type": "strength",
+        "name": "坐姿腿屈伸",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      },
+      {
+        "type": "strength",
+        "name": "单腿哈克深蹲",
+        "sets": 5,
+        "reps": 12,
+        "weight": null,
+        "note": ""
+      }
     ]
   }
 ]
