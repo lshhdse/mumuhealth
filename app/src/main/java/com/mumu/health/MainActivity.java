@@ -4,14 +4,18 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.ClipData;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
 import android.media.ExifInterface;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Build;
 import android.provider.MediaStore;
 import android.view.View;
+import android.view.Display;
+import android.view.WindowManager;
 import android.webkit.*;
 import android.widget.FrameLayout;
 import android.util.Base64;
@@ -63,7 +67,9 @@ public class MainActivity extends Activity {
         config.setDefaultTextEncodingName("UTF-8");
         config.setSupportMultipleWindows(false);
         config.setTextZoom(100);
+        if (Build.VERSION.SDK_INT >= 33) config.setAlgorithmicDarkeningAllowed(false);
         applyNativeAppearance();
+        applyHighRefreshRate();
         WebView.setWebContentsDebuggingEnabled((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0);
         web.addJavascriptInterface(new Bridge(), "NativeBridge");
         web.setWebViewClient(new WebViewClient() {
@@ -89,12 +95,43 @@ public class MainActivity extends Activity {
     }
     private WebResourceResponse emptyResponse() { return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0])); }
     private void applyNativeAppearance() {
-        int color = settings == null ? 0xfff2f2f7 : settings.themeBackground();
+        boolean dark = settings == null ? systemDark() : settings.isDark(systemDark());
+        int color = settings == null ? (dark ? 0xff111116 : 0xfff2f2f7) : settings.themeBackground(systemDark());
         root.setBackgroundColor(color);
         web.setBackgroundColor(color);
         getWindow().setStatusBarColor(color);
         getWindow().setNavigationBarColor(color);
+        int flags = getWindow().getDecorView().getSystemUiVisibility();
+        int lightBars = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+        getWindow().getDecorView().setSystemUiVisibility(dark ? flags & ~lightBars : flags | lightBars);
     }
+    private boolean systemDark() { return (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES; }
+    private void notifySystemAppearance() {
+        if (web != null && !isDestroyed()) web.evaluateJavascript("window.systemAppearanceChanged && window.systemAppearanceChanged(" + systemDark() + ")", null);
+    }
+    private void applyHighRefreshRate() {
+        if (Build.VERSION.SDK_INT >= 35 && web != null && web.getRequestedFrameRate() != 120f) web.setRequestedFrameRate(120f);
+        Display display = getWindow().getDecorView().getDisplay();
+        if (display == null) display = getWindowManager().getDefaultDisplay();
+        if (display == null) return;
+        // Android 14+ accepts an intended rate; older versions need a supported rate.
+        float rate = 120f;
+        if (Build.VERSION.SDK_INT < 34) {
+            Display.Mode active = display.getMode(); rate = 0;
+            for (Display.Mode mode : display.getSupportedModes()) {
+                if (mode.getPhysicalWidth() == active.getPhysicalWidth() && mode.getPhysicalHeight() == active.getPhysicalHeight()
+                    && mode.getRefreshRate() <= 121f) rate = Math.max(rate, mode.getRefreshRate());
+            }
+            if (rate == 0) rate = active.getRefreshRate();
+        }
+        WindowManager.LayoutParams attrs = getWindow().getAttributes();
+        if (Math.abs(attrs.preferredRefreshRate - rate) > .01f || attrs.preferredDisplayModeId != 0) {
+            attrs.preferredDisplayModeId = 0; attrs.preferredRefreshRate = rate; getWindow().setAttributes(attrs);
+        }
+    }
+    @Override protected void onResume() { super.onResume(); if (web != null) { applyNativeAppearance(); applyHighRefreshRate(); notifySystemAppearance(); } }
+    @Override public void onWindowFocusChanged(boolean focused) { super.onWindowFocusChanged(focused); if (focused && web != null) applyHighRefreshRate(); }
+    @Override public void onConfigurationChanged(Configuration config) { super.onConfigurationChanged(config); if (web != null) { applyNativeAppearance(); notifySystemAppearance(); applyHighRefreshRate(); } }
     private File photoDir() { File dir = new File(getFilesDir(), "photos"); dir.mkdirs(); return dir; }
     private void reply(String id, Object result, String error) {
         if (id == null || isFinishing() || isDestroyed()) return;
@@ -147,7 +184,7 @@ public class MainActivity extends Activity {
                     if (bootError != null) throw new Exception(bootError);
                     JSONObject input = new JSONObject(payload);
                     switch (method) {
-                        case "init": reply(id, new JSONObject().put("data", records.snapshot()).put("settings", settings.publicSettings()).put("native", true).put("appVersion", getPackageManager().getPackageInfo(getPackageName(), 0).versionName), null); schedulePendingMealAnalyses(); break;
+                        case "init": reply(id, new JSONObject().put("data", records.snapshot()).put("settings", settings.publicSettings()).put("native", true).put("systemDark",systemDark()).put("appVersion", getPackageManager().getPackageInfo(getPackageName(), 0).versionName), null); schedulePendingMealAnalyses(); break;
                         case "saveMeal": {
                             JSONObject meal = records.save("meals", input);
                             reply(id, meal, null);

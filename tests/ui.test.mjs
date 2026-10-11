@@ -4,6 +4,7 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { checkMonthlyCalendar } from './calendar-ui.mjs';
 import { checkPolishedUi } from './polish-ui.mjs';
 import { checkPeriodsUi } from './periods-ui.mjs';
+import { checkAppearanceUi } from './appearance-ui.mjs';
 const root = 'http://127.0.0.1:4173';
 await mkdir('build/screenshots',{recursive:true});
 const browser = await chromium.launch({ channel:'chrome',headless:true });
@@ -252,6 +253,7 @@ try {
   await checkMonthlyCalendar(browser, errors);
   await checkPeriodsUi(browser, errors);
   await checkPolishedUi(browser, errors);
+  await checkAppearanceUi(browser, errors);
   assert.deepEqual(errors,[],'不应出现页面脚本错误');
 } catch (error) {
   await page.screenshot({path:'build/screenshots/ui-failure.png'}).catch(()=>{});

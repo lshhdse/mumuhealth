@@ -3,6 +3,7 @@ import { renderMonthStatistics } from './calendar.mjs';
 import { validatePeriod } from './periods.mjs';
 import { renderPeriodEditor } from './periods-ui.mjs';
 import { transitionPage, overlayMotion, reduceMotion } from './motion.mjs';
+import { colorModes, colorModeId, resolvedColorMode } from './appearance.mjs';
 import defaultTemplates from './workout-templates.json';
 import legacyTemplates from './workout-templates-legacy.json';
 
@@ -40,7 +41,7 @@ const newToken = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), by
 const main = document.querySelector('#main');
 const overlay = document.querySelector('#overlay');
 const windows = overlayMotion(overlay);
-let renderedPage = '';
+let renderedPage = '', renderedTitle = '';
 const themes = [
   { id: 'blue', name: '晴空蓝', caption: '清爽 · 明亮' },
   { id: 'sage', name: '鼠尾草绿', caption: '自然 · 平静' },
@@ -49,7 +50,11 @@ const themes = [
   { id: 'amber', name: '暖杏', caption: '温暖 · 朴素' }
 ];
 const themeId = value => themes.some(theme => theme.id === value) ? value : 'blue';
-let state = { page: 'today', settingsView: 'root', calendarView: 'week', calendarMonth: localDate().slice(0,7), calendarMetric: 'energy', date: localDate(), data: { version: 1, meals: [], workouts: [], templates: [], periods: [] }, settings: {}, native: false, appVersion: '1.0.11' };
+const systemColors = window.matchMedia('(prefers-color-scheme: dark)');
+let cachedAppearance = {};
+try { cachedAppearance = JSON.parse(localStorage.getItem('mumu.appearance') || '{}'); } catch { /* Ignore an old appearance cache. */ }
+if (!cachedAppearance || typeof cachedAppearance !== 'object' || Array.isArray(cachedAppearance)) cachedAppearance = {};
+let state = { page: 'today', settingsView: 'root', calendarView: 'week', calendarMonth: localDate().slice(0,7), calendarMetric: 'energy', date: localDate(), data: { version: 1, meals: [], workouts: [], templates: [], periods: [] }, settings: cachedAppearance || {}, native: false, systemDark: systemColors.matches, appVersion: '1.0.12' };
 let savingAppearance = false;
 let savingGender = false;
 let updateState = { status: 'idle', available: false };
@@ -90,7 +95,7 @@ function call(method, payload = {}) {
   return previewCall(method, payload);
 }
 const previewKey = 'mumu.preview.records.v1';
-let previewConfig = { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', textModel: 'qwen-plus', visionModel: 'qwen3-vl-plus', hasKey: false, theme: themeId(localStorage.getItem('mumu.preview.theme')), gender: localStorage.getItem('mumu.preview.gender') || '' };
+let previewConfig = { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', textModel: 'qwen-plus', visionModel: 'qwen3-vl-plus', hasKey: false, theme: themeId(localStorage.getItem('mumu.preview.theme')), colorMode: colorModeId(localStorage.getItem('mumu.preview.colorMode')), gender: localStorage.getItem('mumu.preview.gender') || '' };
 function previewData(recoverPending = false) {
   const raw = localStorage.getItem(previewKey);
   let data = raw ? JSON.parse(raw) : { version: 1, meals: [], workouts: [] };
@@ -111,7 +116,7 @@ function previewData(recoverPending = false) {
   return data;
 }
 async function previewCall(method, payload) {
-  if (method === 'init') return { data: previewData(true), settings: previewConfig, native: false, appVersion: '1.0.11' };
+  if (method === 'init') return { data: previewData(true), settings: previewConfig, native: false, appVersion: '1.0.12' };
   if (method === 'profile') {
     if (!['','male','female'].includes(payload.gender)) throw new Error('请选择有效的性别选项。');
     localStorage.setItem('mumu.preview.gender',payload.gender); previewConfig = { ...previewConfig,gender:payload.gender }; return previewConfig;
@@ -125,7 +130,7 @@ async function previewCall(method, payload) {
     index === -1 ? data.periods.push(record) : data.periods.splice(index,1,record);
     localStorage.setItem(previewKey,JSON.stringify(data)); return record;
   }
-  if (method === 'appearance') { previewConfig = { ...previewConfig, theme: themeId(payload.theme) }; localStorage.setItem('mumu.preview.theme', previewConfig.theme); return previewConfig; }
+  if (method === 'appearance') { previewConfig = { ...previewConfig, theme: themeId(payload.theme), colorMode: colorModeId(payload.colorMode) }; localStorage.setItem('mumu.preview.theme', previewConfig.theme); localStorage.setItem('mumu.preview.colorMode', previewConfig.colorMode); return previewConfig; }
   if (method === 'checkUpdate') return { status: 'preview', available: false };
   if (method === 'installUpdate') throw new Error('请在安卓 APP 中安装更新。');
   if (method === 'saveMeal' || method === 'saveWorkout') {
@@ -272,16 +277,30 @@ async function saveGender(gender) {
 }
 function renderAppearance() {
   const selected = themeId(state.settings.theme);
-  return `${settingsHeader('外观', '选一种喜欢的颜色，让日常记录更舒心。')}<section class="appearance-section"><h2>主题配色</h2><div class="theme-grid">${themes.map(theme => `<button class="theme-option ${selected === theme.id ? 'selected' : ''}" data-action="choose-theme" data-theme-id="${theme.id}" aria-pressed="${selected === theme.id}" ${savingAppearance ? 'disabled' : ''}><span class="theme-preview" data-preview="${theme.id}" aria-hidden="true"><span class="preview-title"></span><span class="preview-card"><span class="preview-ring"></span><span class="preview-lines"></span></span><span class="preview-card"><span class="preview-ring"></span><span class="preview-lines"></span></span><span class="preview-tabs"><i></i><i></i><i></i></span></span><span class="theme-caption"><span><strong>${theme.name}</strong><small>${theme.caption}</small></span><span class="theme-check">${icon('check')}</span></span></button>`).join('')}</div></section><p class="preferences-note">点选即生效，下次打开继续使用。</p>`;
+  const mode = colorModeId(state.settings.colorMode);
+  return `${settingsHeader('外观', '喜欢的颜色，适合此刻的明暗。')}<section class="settings-card color-mode-card"><div class="card-title"><h2>显示模式</h2></div><div class="color-mode-options" role="group" aria-label="显示模式">${colorModes.map(item => `<button data-action="choose-color-mode" data-color-mode="${item.id}" aria-pressed="${mode === item.id}" ${savingAppearance ? 'disabled' : ''}>${icon(item.icon)}<span>${item.name}</span></button>`).join('')}</div><p class="field-hint">跟随系统会随手机的深浅色设置自动切换。</p></section><section class="appearance-section"><h2>主题配色</h2><div class="theme-grid">${themes.map(theme => `<button class="theme-option ${selected === theme.id ? 'selected' : ''}" data-action="choose-theme" data-theme-id="${theme.id}" aria-pressed="${selected === theme.id}" ${savingAppearance ? 'disabled' : ''}><span class="theme-preview" data-preview="${theme.id}" aria-hidden="true"><span class="preview-title"></span><span class="preview-card"><span class="preview-ring"></span><span class="preview-lines"></span></span><span class="preview-card"><span class="preview-ring"></span><span class="preview-lines"></span></span><span class="preview-tabs"><i></i><i></i><i></i></span></span><span class="theme-caption"><span><strong>${theme.name}</strong><small>${theme.caption}</small></span><span class="theme-check">${icon('check')}</span></span></button>`).join('')}</div></section><p class="preferences-note">点选即生效，下次打开继续使用。</p>`;
 }
-function applyTheme() { document.documentElement.dataset.theme = themeId(state.settings.theme); }
-async function saveAppearance(value) {
-  if (savingAppearance || themeId(state.settings.theme) === value) return;
-  const previous = state.settings.theme;
-  savingAppearance = true; state.settings.theme = value; applyTheme(); render();
-  try { state.settings = await call('appearance', { theme: value }); }
-  catch (error) { state.settings.theme = previous; toast(error.message); }
-  finally { savingAppearance = false; applyTheme(); if (state.page === 'settings' && ['root','appearance'].includes(state.settingsView)) render(); }
+function applyTheme() {
+  const root = document.documentElement, theme = themeId(state.settings.theme), mode = resolvedColorMode(state.settings.colorMode,state.systemDark);
+  if (root.dataset.theme === theme && root.dataset.colorMode === mode) return;
+  root.dataset.theme = theme; root.dataset.colorMode = mode;
+  document.querySelector('meta[name="theme-color"]').content = getComputedStyle(root).getPropertyValue('--bg').trim();
+}
+function updateSystemColors(dark) { state.systemDark = Boolean(dark); applyTheme(); }
+window.systemAppearanceChanged = updateSystemColors;
+const onSystemColors = event => { if (!state.native) updateSystemColors(event.matches); };
+if (systemColors.addEventListener) systemColors.addEventListener('change',onSystemColors); else systemColors.addListener(onSystemColors);
+async function saveAppearance(value, field = 'theme') {
+  value = field === 'theme' ? themeId(value) : colorModeId(value);
+  if (savingAppearance || (field === 'theme' ? themeId(state.settings.theme) : colorModeId(state.settings.colorMode)) === value) return;
+  const previous = { theme: state.settings.theme, colorMode: state.settings.colorMode };
+  savingAppearance = true; state.settings[field] = value; applyTheme(); render();
+  try {
+    state.settings = { ...state.settings,...await call('appearance', { theme: themeId(state.settings.theme),colorMode: colorModeId(state.settings.colorMode) }) };
+    try { localStorage.setItem('mumu.appearance',JSON.stringify({theme:state.settings.theme,colorMode:state.settings.colorMode})); } catch { /* Native preferences remain authoritative if the optional startup cache is full. */ }
+  }
+  catch (error) { Object.assign(state.settings,previous); toast(error.message); }
+  finally { savingAppearance = false; applyTheme(); if (state.page === 'settings' && ['root','appearance'].includes(state.settingsView)) render(); document.querySelector(`[data-action="${field === 'theme' ? 'choose-theme' : 'choose-color-mode'}"][data-${field === 'theme' ? 'theme-id' : 'color-mode'}="${state.settings[field] || (field === 'theme' ? 'blue' : 'system')}"]`)?.focus({preventScroll:true}); }
 }
 function refreshUpdateUi() {
   if (state.page === 'settings' && ['root','updates'].includes(state.settingsView)) render();
@@ -323,7 +342,8 @@ async function installUpdate() {
 function render({ direction = 1, transition = false } = {}) {
   applyTheme();
   const pageKey = `${state.page}/${state.page === 'settings' ? state.settingsView : state.page === 'history' ? state.calendarView : ''}`;
-  document.querySelector('#app-header').innerHTML = titleBar();
+  const header = document.querySelector('#app-header'), title = titleBar();
+  if (renderedTitle !== title) { header.innerHTML = title; renderedTitle = title; }
   main.innerHTML = state.page === 'today' ? renderToday() : state.page === 'history' ? renderCalendar() : renderSettings();
   const navigation = document.querySelector('#navigation');
   if (!navigation.childElementCount) navigation.innerHTML = [['today','home','今天'],['history','calendar','日历'],['settings','settings','我的']].map(([page,name,label]) => `<button class="nav-button" data-action="navigate" data-page="${page}">${icon(name)}${label}</button>`).join('');
@@ -604,6 +624,7 @@ async function action(name, node) {
       state.settingsView = name.slice(5); render(); window.scrollTo(0,0); break;
     case 'settings-back': state.settingsView = 'root'; render({direction:-1}); window.scrollTo(0,0); break;
     case 'choose-theme': await saveAppearance(node.dataset.themeId); break;
+    case 'choose-color-mode': await saveAppearance(node.dataset.colorMode,'colorMode'); break;
     case 'choose-gender': await saveGender(node.dataset.gender); break;
     case 'add-period': openPeriod(); break;
     case 'edit-period': openPeriod(state.data.periods.find(record => record.id === node.dataset.id)); break;
@@ -658,10 +679,11 @@ async function action(name, node) {
     case 'install-update': await installUpdate(); break;
   }
 }
-document.addEventListener('click', event => { const node = event.target.closest('[data-action]'); if (node) { event.preventDefault(); action(node.dataset.action,node).catch(error => { busy = false; toast(error.message || '操作失败，请重试。'); }); } else if (event.target.classList.contains('overlay') && !confirmResolve) closeSheet(); });
+document.addEventListener('click', event => { const node = event.target.closest('[data-action]'); if (node) { event.preventDefault(); action(node.dataset.action,node).catch(error => { busy = false; toast(error.message || '操作失败，请重试。'); }); } else if ((event.target.classList.contains('overlay') || event.target.classList.contains('modal-backdrop')) && !confirmResolve) closeSheet(); });
 document.addEventListener('input', event => { if (editor?.kind === 'meal') { collectMeal(); updateReviewTotal(); saveDraft(); } });
 document.addEventListener('change', event => { if (event.target.id === 'history-date' && event.target.value) { state.date = event.target.value; render(); } else if (event.target.id === 'statistics-month' && /^\d{4}-\d{2}$/.test(event.target.value)) { state.calendarMonth = event.target.value; render(); } });
 window.handleBack = () => { if (windows.isClosing()) return true; if (busy) { toast('正在处理，请稍候。'); return true; } if (overlay.childElementCount) { closeSheet(); return true; } if (state.page === 'settings' && state.settingsView !== 'root') { state.settingsView = 'root'; render({direction:-1}); window.scrollTo(0,0); return true; } if (state.page === 'history' && state.calendarView === 'month') { state.calendarView = 'week'; if (state.date.slice(0,7) !== state.calendarMonth) state.date = `${state.calendarMonth}-01`; render(); window.scrollTo(0,0); return true; } if (state.page !== 'today') { state.page = 'today'; render({direction:-1}); return true; } return false; };
+applyTheme();
 (async function init() {
   try { const initial = await call('init'); Object.assign(state,initial); if (!state.data.periods) state.data.periods = []; render(); if (state.native) checkUpdate(); }
   catch (error) { main.innerHTML = `<div class="fatal"><h2>暂时无法读取记录</h2><p>${e(error.message)}<br>请关闭后重新打开 APP。已有文件不会被自动清空。</p></div>`; }

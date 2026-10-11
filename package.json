@@ -1,13 +1,16 @@
 {
   "name": "mumu-health",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "private": true,
   "description": "沐沐健康：个人饮食与训练日记 Android APP",
   "scripts": {
     "build:web": "node tools/build-web.mjs",
     "preview": "node tools/preview.mjs",
-    "test": "node --test tests/domain.test.mjs tests/calendar.test.mjs tests/periods.test.mjs tests/release.test.mjs",
+    "test": "node --test tests/domain.test.mjs tests/calendar.test.mjs tests/periods.test.mjs tests/appearance.test.mjs tests/release.test.mjs",
     "test:ui": "node tests/ui.test.mjs"
   },
-  "devDependencies": { "playwright": "1.58.2", "esbuild": "0.25.12" }
+  "devDependencies": {
+    "playwright": "1.58.2",
+    "esbuild": "0.25.12"
+  }
 }

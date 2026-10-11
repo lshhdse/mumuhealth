@@ -40,7 +40,7 @@ public final class SettingsStore {
         return new JSONObject().put("baseUrl", prefs.getString("baseUrl", "https://dashscope.aliyuncs.com/compatible-mode/v1"))
             .put("textModel", prefs.getString("textModel", "qwen-plus")).put("visionModel", prefs.getString("visionModel", "qwen3-vl-plus"))
             .put("hasKey", !prefs.getString("encryptedKey", "").isEmpty()).put("theme", prefs.getString("theme", "blue"))
-            .put("gender", prefs.getString("gender", ""));
+            .put("gender", prefs.getString("gender", "")).put("colorMode", prefs.getString("colorMode", "system"));
     }
     public synchronized JSONObject saveProfile(JSONObject input) throws Exception {
         String gender = input.optString("gender", "");
@@ -50,11 +50,18 @@ public final class SettingsStore {
     }
     public synchronized JSONObject saveAppearance(JSONObject input) throws Exception {
         String theme = input.optString("theme");
+        String mode = input.optString("colorMode", prefs.getString("colorMode", "system"));
         if (!theme.matches("blue|sage|plum|rose|amber")) throw new Exception("请选择支持的主题。");
-        if (!prefs.edit().putString("theme", theme).commit()) throw new Exception("外观保存失败。");
+        if (!mode.matches("system|light|dark")) throw new Exception("请选择支持的显示模式。");
+        if (!prefs.edit().putString("theme", theme).putString("colorMode", mode).commit()) throw new Exception("外观保存失败。");
         return publicSettings();
     }
-    public synchronized int themeBackground() {
+    public synchronized boolean isDark(boolean systemDark) {
+        String mode = prefs.getString("colorMode", "system");
+        return mode.equals("dark") || (mode.equals("system") && systemDark);
+    }
+    public synchronized int themeBackground(boolean systemDark) {
+        if (isDark(systemDark)) return 0xff111116;
         switch (prefs.getString("theme", "blue")) {
             case "sage": return 0xfff2f5f1;
             case "plum": return 0xfff5f2f8;

@@ -2,12 +2,13 @@
 const running = new WeakMap();
 export const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 function animate(node, frames, options) {
-  running.get(node)?.cancel();
   if (!node?.animate || reduceMotion()) return Promise.resolve();
+  running.get(node)?.cancel();
+  node.classList.add('motion-active');
   const animation = node.animate(frames, options);
   running.set(node, animation);
   return animation.finished.catch(() => {}).then(() => {
-    if (running.get(node) === animation) running.delete(node);
+    if (running.get(node) === animation) { running.delete(node); node.classList.remove('motion-active'); }
   });
 }
 export function transitionPage(node, direction = 1) {
@@ -28,11 +29,13 @@ export function overlayMotion(root) {
       openerAction = opener?.dataset.action || '';
     }
     revision++; closing = null; view = key;
-    [root.firstElementChild, root.querySelector('[role="dialog"]')].forEach(node => {
+    [root.querySelector('.modal-backdrop'), root.querySelector('[role="dialog"]')].forEach(node => {
       if (node) running.get(node)?.cancel();
     });
     root.innerHTML = markup;
     const backdrop = root.firstElementChild, panel = backdrop.querySelector('[role="dialog"]');
+    const veil = document.createElement('div');
+    veil.className = 'modal-backdrop'; veil.setAttribute('aria-hidden','true'); backdrop.prepend(veil);
     panel.tabIndex = -1;
     if (same && root.querySelector('.sheet-body')) root.querySelector('.sheet-body').scrollTop = scrollTop;
     document.body.classList.add('modal-open');
@@ -41,7 +44,8 @@ export function overlayMotion(root) {
     // The backdrop blocks clicks; the keyboard handler keeps focus in the dialog.
     shell.setAttribute('aria-hidden', 'true');
     if (same) return;
-    if (!existed) animate(backdrop, [{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' });
+    // Keep blur radius static. Only the veil's opacity and panel's transform animate.
+    if (!existed) animate(veil, [{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' });
     const dialog = panel.classList.contains('dialog');
     animate(panel, dialog ? [
       { opacity: 0, transform: 'translateY(12px) scale(.94)' },
@@ -60,7 +64,7 @@ export function overlayMotion(root) {
     const panel = backdrop.querySelector('[role="dialog"]');
     backdrop.classList.add('closing');
     closing = Promise.all([
-      animate(backdrop, [{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: 'ease-in' }),
+      animate(backdrop.querySelector('.modal-backdrop'), [{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: 'ease-in' }),
       animate(panel, [{ transform: 'translateY(0) scale(1)' }, {
         transform: panel.classList.contains('dialog') ? 'translateY(8px) scale(.96)' : 'translateY(40px) scale(.985)'
       }], { duration: 180, easing: 'cubic-bezier(.4,0,1,1)' })

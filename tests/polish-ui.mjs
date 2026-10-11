@@ -17,6 +17,7 @@ export async function checkPolishedUi(browser, errors) {
       }, tab);
       assert.equal(animated, true, '页面切换应有有限时长的转场');
       await settle();
+      assert.equal(await page.locator('.motion-active').count(),0,'转场结束后释放临时合成图层');
       assert.equal(await page.getByText('沐沐健康', { exact: true }).count(), 1, '每页只保留统一的品牌标题');
       assert.equal(await page.getByText('每一餐，每一次行动。', { exact: true }).count(), 1);
     }
@@ -39,6 +40,8 @@ export async function checkPolishedUi(browser, errors) {
     await action('close-sheet'); await page.locator('.sheet').waitFor({state:'detached'});
     await page.locator('[data-page="today"]').click();
     await action('add-workout'); await settle();
+    assert.equal(await page.locator('.modal-backdrop').count(),1,'窗口共享一层静态高斯背景');
+    assert.equal(await page.evaluate(()=>getComputedStyle(document.querySelector('.modal-backdrop')).backdropFilter),'blur(20px) saturate(1.25)');
     // A repeated render of this editor must not replay the opening animation.
     await page.getByLabel('运动 1 名称').fill('慢跑');
     await page.getByLabel('运动 1 时长').fill('20');
