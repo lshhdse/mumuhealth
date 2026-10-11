@@ -1,5 +1,7 @@
 import { MEALS, localDate, shiftDate, shiftMonth, weekDates, daySummary, mealEnergy, validateMeal, validateWorkout, validateTemplate, upgradeTemplateDefaults, escapeHtml as e } from './domain.mjs';
 import { renderMonthStatistics } from './calendar.mjs';
+import { validatePeriod } from './periods.mjs';
+import { renderPeriodEditor } from './periods-ui.mjs';
 import { transitionPage, overlayMotion, reduceMotion } from './motion.mjs';
 import defaultTemplates from './workout-templates.json';
 import legacyTemplates from './workout-templates-legacy.json';
@@ -30,7 +32,8 @@ const paths = {
   trash: '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/>',
   download: '<path d="M12 3v12m-5-5 5 5 5-5M4 15v6h16v-6"/>',
   upload: '<path d="M12 16V4m-5 5 5-5 5 5M4 15v6h16v-6"/>',
-  check: '<path d="m5 12 4 4L19 6"/>'
+  check: '<path d="m5 12 4 4L19 6"/>',
+  droplet: '<path d="M12 3s-7 8-7 12a7 7 0 0 0 14 0c0-4-7-12-7-12Z"/>'
 };
 const icon = (name, cls = '') => `<svg viewBox="0 0 24 24" class="icon ${cls}" aria-hidden="true">${paths[name] || paths.leaf}</svg>`;
 const newToken = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
@@ -46,8 +49,9 @@ const themes = [
   { id: 'amber', name: '暖杏', caption: '温暖 · 朴素' }
 ];
 const themeId = value => themes.some(theme => theme.id === value) ? value : 'blue';
-let state = { page: 'today', settingsView: 'root', calendarView: 'week', calendarMonth: localDate().slice(0,7), calendarMetric: 'energy', date: localDate(), data: { version: 1, meals: [], workouts: [], templates: [] }, settings: {}, native: false, appVersion: '1.0.10' };
+let state = { page: 'today', settingsView: 'root', calendarView: 'week', calendarMonth: localDate().slice(0,7), calendarMetric: 'energy', date: localDate(), data: { version: 1, meals: [], workouts: [], templates: [], periods: [] }, settings: {}, native: false, appVersion: '1.0.11' };
 let savingAppearance = false;
+let savingGender = false;
 let updateState = { status: 'idle', available: false };
 let dismissedUpdate = 0;
 let installingUpdate = false;
@@ -86,10 +90,12 @@ function call(method, payload = {}) {
   return previewCall(method, payload);
 }
 const previewKey = 'mumu.preview.records.v1';
-let previewConfig = { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', textModel: 'qwen-plus', visionModel: 'qwen3-vl-plus', hasKey: false, theme: themeId(localStorage.getItem('mumu.preview.theme')) };
+let previewConfig = { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', textModel: 'qwen-plus', visionModel: 'qwen3-vl-plus', hasKey: false, theme: themeId(localStorage.getItem('mumu.preview.theme')), gender: localStorage.getItem('mumu.preview.gender') || '' };
 function previewData(recoverPending = false) {
   const raw = localStorage.getItem(previewKey);
   let data = raw ? JSON.parse(raw) : { version: 1, meals: [], workouts: [] };
+  if (!Object.prototype.hasOwnProperty.call(data,'periods')) data.periods = [];
+  if (!Array.isArray(data.periods)) throw new Error('经期记录格式有误，原数据已保留。');
   const upgraded = upgradeTemplateDefaults(data, defaultTemplates, legacyTemplates, newToken);
   if (upgraded !== data) {
     data = upgraded;
@@ -105,7 +111,20 @@ function previewData(recoverPending = false) {
   return data;
 }
 async function previewCall(method, payload) {
-  if (method === 'init') return { data: previewData(true), settings: previewConfig, native: false, appVersion: '1.0.10' };
+  if (method === 'init') return { data: previewData(true), settings: previewConfig, native: false, appVersion: '1.0.11' };
+  if (method === 'profile') {
+    if (!['','male','female'].includes(payload.gender)) throw new Error('请选择有效的性别选项。');
+    localStorage.setItem('mumu.preview.gender',payload.gender); previewConfig = { ...previewConfig,gender:payload.gender }; return previewConfig;
+  }
+  if (method === 'savePeriod') {
+    if (previewConfig.gender !== 'female') throw new Error('请先在我的 → 设置中选择女性。');
+    const data = previewData(), error = validatePeriod(payload,data.periods);
+    if (error) throw new Error(error);
+    const record = { ...payload,id:payload.id || newToken(),updatedAt:Date.now() };
+    const index = data.periods.findIndex(item => item.id === record.id);
+    index === -1 ? data.periods.push(record) : data.periods.splice(index,1,record);
+    localStorage.setItem(previewKey,JSON.stringify(data)); return record;
+  }
   if (method === 'appearance') { previewConfig = { ...previewConfig, theme: themeId(payload.theme) }; localStorage.setItem('mumu.preview.theme', previewConfig.theme); return previewConfig; }
   if (method === 'checkUpdate') return { status: 'preview', available: false };
   if (method === 'installUpdate') throw new Error('请在安卓 APP 中安装更新。');
@@ -214,7 +233,7 @@ function renderToday() {
 }
 function draftButton() { try { return localStorage.getItem('mumu.draft') ? '<div class="section-title"><span>有一条未保存的饮食草稿</span><button data-action="resume-draft">继续记录 →</button></div>' : ''; } catch { return ''; } }
 function renderCalendar() {
-  return `<header class="calendar-heading"><h1>日历</h1><p>按天记录，按月回看。</p></header><div class="calendar-tabs" role="group" aria-label="日历视图"><button data-action="calendar-view" data-view="week" aria-pressed="${state.calendarView === 'week'}">按日记录</button><button data-action="calendar-view" data-view="month" aria-pressed="${state.calendarView === 'month'}">月统计</button></div>${state.calendarView === 'month' ? renderMonthStatistics(state.data,state.calendarMonth,localDate(),state.calendarMetric,icon) : `<section id="daily-calendar" aria-label="按日记录">${renderHistory()}</section>`}`;
+  return `<header class="calendar-heading"><h1>日历</h1><p>按天记录，按月回看。</p></header><div class="calendar-tabs" role="group" aria-label="日历视图"><button data-action="calendar-view" data-view="week" aria-pressed="${state.calendarView === 'week'}">按日记录</button><button data-action="calendar-view" data-view="month" aria-pressed="${state.calendarView === 'month'}">月统计</button></div>${state.calendarView === 'month' ? renderMonthStatistics(state.data,state.calendarMonth,localDate(),state.calendarMetric,icon,state.settings.gender === 'female') : `<section id="daily-calendar" aria-label="按日记录">${renderHistory()}</section>`}`;
 }
 function renderHistory() {
   const summary = daySummary(state.data, state.date);
@@ -235,11 +254,21 @@ function recordStats() {
 function renderSettings() {
   if (state.settingsView === 'ai') return renderAiSettings();
   if (state.settingsView === 'appearance') return renderAppearance();
-  if (state.settingsView === 'general') return `${settingsHeader('设置', '管理你的记录与备份。')}${recordStats()}<section class="settings-card"><div class="card-title"><h2>数据与备份</h2><span class="status-pill">本地保存</span></div><button class="settings-action" data-action="export">${icon('download')}<span>导出记录与照片</span>${icon('arrow','chevron')}</button><button class="settings-action" data-action="import">${icon('upload')}<span>从备份恢复</span>${icon('arrow','chevron')}</button><p class="field-hint">备份不包含 API Key。卸载 APP 会清除本地记录，换手机前请先导出备份。</p></section><p class="preferences-note">热量为估算值，可以按实际份量修正。<br>训练只记录，不计算热量差。</p>`;
+  if (state.settingsView === 'general') return `${settingsHeader('设置', '个人资料与数据管理。')}${renderProfile()}${recordStats()}<section class="settings-card"><div class="card-title"><h2>数据与备份</h2><span class="status-pill">本地保存</span></div><button class="settings-action" data-action="export">${icon('download')}<span>导出记录与照片</span>${icon('arrow','chevron')}</button><button class="settings-action" data-action="import">${icon('upload')}<span>从备份恢复</span>${icon('arrow','chevron')}</button><p class="field-hint">备份包含经期记录，不包含 API Key。卸载 APP 会清除本地记录，换手机前请先导出备份。</p></section><p class="preferences-note">热量为估算值，可以按实际份量修正。<br>训练只记录，不计算热量差。</p>`;
   if (state.settingsView === 'updates') return `${settingsHeader('检查更新', '每次打开 APP，会自动检查新版本。')}${updateSection()}<p class="preferences-note">可以稍后更新，再从这里继续安装。</p>`;
   const theme = themes.find(theme => theme.id === themeId(state.settings.theme));
   const updateLabel = updateState.status === 'checking' ? '检查中' : updateState.status === 'current' ? '已是最新' : updateState.status === 'error' ? '检查失败' : e(state.appVersion);
-  return `<header class="heading mine-heading"><h1>我的</h1><p>让记录更合你的习惯。</p></header><section class="menu-section"><h2>偏好</h2><div class="menu-group">${menuRow('general','gear','设置','数据与备份')}${menuRow('appearance','palette','外观',theme.name)}${menuRow('ai','spark','AI 配置',state.settings.hasKey ? '已配置' : '待配置')}</div></section><section class="menu-section"><h2>记录与应用</h2><div class="menu-group">${menuRow('templates','dumbbell','训练模板',`${state.data.templates.length} 个模板`)}${menuRow('updates','download','检查更新',updateLabel,updateState.available ? '有新版本' : '')}</div></section><div class="settings-about">版本 ${e(state.appVersion)}</div>`;
+  return `<header class="heading mine-heading"><h1>我的</h1><p>让记录更合你的习惯。</p></header><section class="menu-section"><h2>偏好</h2><div class="menu-group">${menuRow('general','gear','设置','个人资料与数据备份')}${menuRow('appearance','palette','外观',theme.name)}${menuRow('ai','spark','AI 配置',state.settings.hasKey ? '已配置' : '待配置')}</div></section><section class="menu-section"><h2>记录与应用</h2><div class="menu-group">${menuRow('templates','dumbbell','训练模板',`${state.data.templates.length} 个模板`)}${menuRow('updates','download','检查更新',updateLabel,updateState.available ? '有新版本' : '')}</div></section><div class="settings-about">版本 ${e(state.appVersion)}</div>`;
+}
+function renderProfile() {
+  return `<section class="settings-card profile-card"><div class="card-title"><h2>个人资料</h2></div><span class="field-label">性别</span><div class="gender-options" role="group" aria-label="性别">${[['','未设置'],['male','男性'],['female','女性']].map(([value,label]) => `<button data-action="choose-gender" data-gender="${value}" aria-pressed="${(state.settings.gender || '') === value}" ${savingGender ? 'disabled' : ''}>${label}</button>`).join('')}</div><p class="field-hint">选择女性后，可以在日历的月统计中记录经期。</p></section>`;
+}
+async function saveGender(gender) {
+  if (savingGender || (state.settings.gender || '') === gender) return;
+  busy = true; savingGender = true; render();
+  try { state.settings = { ...state.settings,...await call('profile',{gender}) }; toast('个人资料已保存。'); }
+  catch (error) { toast(error.message); }
+  finally { busy = false; savingGender = false; render(); document.querySelector(`[data-action="choose-gender"][data-gender="${state.settings.gender || ''}"]`)?.focus({preventScroll:true}); }
 }
 function renderAppearance() {
   const selected = themeId(state.settings.theme);
@@ -451,6 +480,32 @@ function putRecord(kind, record) {
     state.data[kind].splice(index, 1, record);
   }
 }
+function openPeriod(record, finish = false) {
+  if (state.settings.gender !== 'female') return toast('请先在我的 → 设置中选择女性。');
+  const today = localDate(), month = state.calendarMonth;
+  const startDate = month === today.slice(0,7) || month > today.slice(0,7) ? today : `${month}-01`;
+  editor = { kind:'period',record:JSON.parse(JSON.stringify(record || {startDate,endDate:'',note:''})) };
+  if (finish) editor.record.endDate = today;
+  showPeriodEditor();
+}
+function showPeriodEditor() { showSheet(renderPeriodEditor(editor.record,localDate(),icon)); }
+function collectPeriod() {
+  Object.assign(editor.record,{startDate:document.querySelector('#period-start').value,endDate:document.querySelector('#period-end').value,note:document.querySelector('#period-note').value.trim()});
+}
+async function savePeriod() {
+  collectPeriod(); const error = validatePeriod(editor.record,state.data.periods);
+  if (error) return showError(error);
+  lock(true); showError('');
+  try { const record = await call('savePeriod',editor.record); putRecord('periods',record); editor = null; lock(false); await closeSheet(); toast('经期记录已保存。'); }
+  catch (error) { lock(false); showError(error.message); }
+}
+async function deletePeriod() {
+  collectPeriod(); const saved = editor;
+  if (!await confirmDialog('删除这条经期记录？','删除后无法在 APP 中撤销。',true)) { editor = saved; showPeriodEditor(); return; }
+  busy = true;
+  try { await call('delete',{kind:'periods',id:saved.record.id}); state.data.periods = state.data.periods.filter(record => record.id !== saved.record.id); editor = null; busy = false; render(); toast('经期记录已删除。'); }
+  catch (error) { busy = false; editor = saved; showPeriodEditor(); showError(error.message); }
+}
 function prepareMealForSave(record, original) {
   const changedInput = original && (record.description !== original.description || record.photo !== original.photo);
   const changedFoods = original && JSON.stringify(record.foods) !== JSON.stringify(original.foods);
@@ -524,7 +579,7 @@ async function deleteRecord() {
 }
 async function importBackup() {
   busy = true;
-  try { const info = await call('import'); busy = false; if (!info) return; const answer = await confirmDialog('恢复这份备份？',`备份包含 ${info.meals} 条饮食、${info.workouts} 条训练记录。\n恢复会替换当前记录，建议先导出当前数据。API Key 保持原样。`,true); if (!answer) return; busy = true; state.data = await call('restore'); localStorage.removeItem('mumu.draft'); busy = false; render(); toast('备份已恢复。'); }
+  try { const info = await call('import'); busy = false; if (!info) return; const periods = Number.isInteger(info.periods) ? `、${info.periods} 条经期` : ''; const answer = await confirmDialog('恢复这份备份？',`备份包含 ${info.meals} 条饮食、${info.workouts} 条训练${periods}记录。\n恢复会替换当前记录，建议先导出当前数据。${periods ? '' : '旧备份不含经期记录时，现有经期记录保留。'}性别与 API Key 保持原样。`,true); if (!answer) return; busy = true; state.data = await call('restore'); if (!state.data.periods) state.data.periods = []; localStorage.removeItem('mumu.draft'); busy = false; render(); toast('备份已恢复。'); }
   catch (error) { busy = false; toast(error.message); }
 }
 async function action(name, node) {
@@ -549,6 +604,12 @@ async function action(name, node) {
       state.settingsView = name.slice(5); render(); window.scrollTo(0,0); break;
     case 'settings-back': state.settingsView = 'root'; render({direction:-1}); window.scrollTo(0,0); break;
     case 'choose-theme': await saveAppearance(node.dataset.themeId); break;
+    case 'choose-gender': await saveGender(node.dataset.gender); break;
+    case 'add-period': openPeriod(); break;
+    case 'edit-period': openPeriod(state.data.periods.find(record => record.id === node.dataset.id)); break;
+    case 'end-period': openPeriod(state.data.periods.find(record => record.id === node.dataset.id),true); break;
+    case 'save-period': await savePeriod(); break;
+    case 'delete-period': await deletePeriod(); break;
     case 'add-meal': openMeal(node.dataset.meal); break;
     case 'view-meal': openMealDetail(state.data.meals.find(record => record.id === node.dataset.id)); break;
     case 'edit-meal': openMeal('',state.data.meals.find(record => record.id === node.dataset.id)); break;
@@ -602,6 +663,6 @@ document.addEventListener('input', event => { if (editor?.kind === 'meal') { col
 document.addEventListener('change', event => { if (event.target.id === 'history-date' && event.target.value) { state.date = event.target.value; render(); } else if (event.target.id === 'statistics-month' && /^\d{4}-\d{2}$/.test(event.target.value)) { state.calendarMonth = event.target.value; render(); } });
 window.handleBack = () => { if (windows.isClosing()) return true; if (busy) { toast('正在处理，请稍候。'); return true; } if (overlay.childElementCount) { closeSheet(); return true; } if (state.page === 'settings' && state.settingsView !== 'root') { state.settingsView = 'root'; render({direction:-1}); window.scrollTo(0,0); return true; } if (state.page === 'history' && state.calendarView === 'month') { state.calendarView = 'week'; if (state.date.slice(0,7) !== state.calendarMonth) state.date = `${state.calendarMonth}-01`; render(); window.scrollTo(0,0); return true; } if (state.page !== 'today') { state.page = 'today'; render({direction:-1}); return true; } return false; };
 (async function init() {
-  try { const initial = await call('init'); Object.assign(state,initial); render(); if (state.native) checkUpdate(); }
+  try { const initial = await call('init'); Object.assign(state,initial); if (!state.data.periods) state.data.periods = []; render(); if (state.native) checkUpdate(); }
   catch (error) { main.innerHTML = `<div class="fatal"><h2>暂时无法读取记录</h2><p>${e(error.message)}<br>请关闭后重新打开 APP。已有文件不会被自动清空。</p></div>`; }
 })();

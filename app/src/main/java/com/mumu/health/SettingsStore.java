@@ -39,7 +39,14 @@ public final class SettingsStore {
     public synchronized JSONObject publicSettings() throws Exception {
         return new JSONObject().put("baseUrl", prefs.getString("baseUrl", "https://dashscope.aliyuncs.com/compatible-mode/v1"))
             .put("textModel", prefs.getString("textModel", "qwen-plus")).put("visionModel", prefs.getString("visionModel", "qwen3-vl-plus"))
-            .put("hasKey", !prefs.getString("encryptedKey", "").isEmpty()).put("theme", prefs.getString("theme", "blue"));
+            .put("hasKey", !prefs.getString("encryptedKey", "").isEmpty()).put("theme", prefs.getString("theme", "blue"))
+            .put("gender", prefs.getString("gender", ""));
+    }
+    public synchronized JSONObject saveProfile(JSONObject input) throws Exception {
+        String gender = input.optString("gender", "");
+        if (!gender.isEmpty() && !gender.equals("male") && !gender.equals("female")) throw new Exception("请选择有效的性别选项。");
+        if (!prefs.edit().putString("gender", gender).commit()) throw new Exception("个人资料保存失败，请重试。");
+        return publicSettings();
     }
     public synchronized JSONObject saveAppearance(JSONObject input) throws Exception {
         String theme = input.optString("theme");

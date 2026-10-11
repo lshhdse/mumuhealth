@@ -21,7 +21,7 @@ html { scroll-padding-bottom: 108px; }
 .heading p, .calendar-heading p, .preferences-heading p { color: #797981; }
 .heading .eyebrow { display: none; }
 .summary-card, .settings-card, .menu-group, .meal-card, .workout-list,
-.workout-empty, .chart-card, .month-calendar-card, .month-trend-card { box-shadow: var(--soft-shadow); }
+.workout-empty, .chart-card, .month-calendar-card, .month-trend-card, .period-card { box-shadow: var(--soft-shadow); }
 .summary-card { border-radius: 25px; }
 .meal-card, .workout-list, .menu-group, .settings-card { border-radius: 21px; }
 .menu-row { min-height: 64px; }

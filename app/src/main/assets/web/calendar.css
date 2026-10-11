@@ -38,6 +38,29 @@
 .month-section-title h3 { font-size: 14px; font-weight: 650; }
 .month-section-title > span { color: var(--muted); font-size: 10px; }
 .month-legend { display: flex; gap: 15px; margin-bottom: 15px; color: var(--muted); font-size: 10px; }
+.month-legend { flex-wrap: wrap; row-gap: 8px; }
+.month-legend .period-legend .icon { color: #b84d72; }
+.month-day.has-period { position: relative; background: #fceef3; }
+.month-day.has-period::after { content: ''; position: absolute; top: 6px; right: 4px; width: 5px; height: 5px; border-radius: 50%; background: #b84d72; }
+.period-card { background: var(--paper); padding: 18px 15px; border-radius: 20px; margin-bottom: 20px; }
+.period-card h3 { display: flex; align-items: center; gap: 5px; }
+.period-card h3 .icon { width: 17px; height: 17px; color: #b84d72; }
+.period-summary { color: var(--muted); font-size: 11px; margin-top: 7px; }
+.period-summary strong { color: #b84d72; font-size: 15px; }
+.period-add { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; color: var(--green); font-size: 12px; font-weight: 600; flex-shrink: 0; }
+.period-add .icon { width: 17px; height: 17px; }
+.period-empty { font-size: 11px; color: var(--muted); line-height: 1.8; }
+.period-row { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--line); }
+.period-record { flex: 1; min-width: 0; text-align: left; padding: 13px 0; }
+.period-range { display: flex; flex-direction: column; gap: 5px; font-size: 12px; line-height: 1.5; }
+.period-range > span { color: var(--muted); font-size: 11px; }
+.period-record small { display: block; color: var(--muted); font-size: 10px; margin-top: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.period-row .chevron { width: 15px; height: 15px; color: var(--muted); flex-shrink: 0; }
+.period-end { min-height: 44px; min-width: 44px; color: #b84d72; font-size: 12px; }
+.gender-options { display: flex; gap: 4px; padding: 4px; margin: 12px 0; background: var(--bg); border-radius: 13px; }
+.gender-options button { flex: 1; min-width: 0; min-height: 42px; border-radius: 10px; font-size: 13px; color: var(--muted); }
+.gender-options [aria-pressed="true"] { background: var(--paper); color: var(--green); font-weight: 600; box-shadow: 0 2px 6px #0000000a; }
+.gender-options button:disabled { opacity: .6; }
 .month-legend span { display: inline-flex; align-items: center; gap: 4px; }
 .month-legend .icon { width: 15px; height: 15px; color: var(--green); }
 .month-legend .day-food .icon, .month-day-icons .day-food { color: #b98125; }

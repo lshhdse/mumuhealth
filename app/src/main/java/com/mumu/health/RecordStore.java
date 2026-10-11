@@ -25,6 +25,8 @@ public final class RecordStore {
         } else data = new JSONObject().put("version", 1).put("meals", new JSONArray()).put("workouts", new JSONArray());
         if (!data.has("templates")) data.put("templates", new JSONArray());
         if (data.optJSONArray("templates") == null) throw new Exception("模板文件格式有误，原文件已保留。");
+        if (!data.has("periods")) data.put("periods", new JSONArray());
+        if (data.optJSONArray("periods") == null) throw new Exception("经期记录格式有误，原文件已保留。");
         JSONObject upgraded = upgradeTemplateDefaults(data);
         if (upgraded != data && file.getBaseFile().exists()) write(upgraded);
         else data = upgraded;
@@ -96,6 +98,7 @@ public final class RecordStore {
     }
     private JSONObject normalize(String kind, JSONObject input) throws Exception {
         if (kind.equals("templates")) return normalizeTemplate(input);
+        if (kind.equals("periods")) return normalizePeriod(input);
         String date = text(input, "date", 10);
         try { if (!LocalDate.parse(date).toString().equals(date)) throw new Exception(); } catch (Exception e) { throw new Exception("请选择有效日期。"); }
         String id = input.optString("id", "");
@@ -165,6 +168,35 @@ public final class RecordStore {
         }
         return new JSONObject().put("id", id).put("name", name).put("exercises", clean).put("updatedAt", System.currentTimeMillis());
     }
+    private JSONObject normalizePeriod(JSONObject input) throws Exception {
+        String id = text(input, "id", 80), start = text(input, "startDate", 10), end = text(input, "endDate", 10);
+        if (id.isEmpty()) id = UUID.randomUUID().toString();
+        if (!id.matches("[a-zA-Z0-9-]{1,80}")) throw new Exception("经期记录编号无效。");
+        LocalDate startDate, endDate = null;
+        try { startDate = LocalDate.parse(start); if (!startDate.toString().equals(start)) throw new Exception(); }
+        catch (Exception e) { throw new Exception("请选择有效的开始日期。"); }
+        if (!end.isEmpty()) {
+            try { endDate = LocalDate.parse(end); if (!endDate.toString().equals(end)) throw new Exception(); }
+            catch (Exception e) { throw new Exception("请选择有效的结束日期。"); }
+        }
+        LocalDate today = LocalDate.now();
+        if (startDate.isAfter(today)) throw new Exception("开始日期不能晚于今天。");
+        if (endDate != null && endDate.isBefore(startDate)) throw new Exception("结束日期不能早于开始日期。");
+        if (endDate != null && endDate.isAfter(today)) throw new Exception("结束日期不能晚于今天。");
+        return new JSONObject().put("id", id).put("startDate", start).put("endDate", end)
+            .put("note", text(input, "note", 2000)).put("updatedAt", System.currentTimeMillis());
+    }
+    private void validatePeriodRanges(JSONArray records) throws Exception {
+        java.util.ArrayList<JSONObject> sorted = new java.util.ArrayList<>();
+        for (int i = 0; i < records.length(); i++) sorted.add(records.getJSONObject(i));
+        java.util.Collections.sort(sorted, (a, b) -> a.optString("startDate").compareTo(b.optString("startDate")));
+        String previousEnd = "";
+        for (JSONObject record : sorted) {
+            if (record.getString("startDate").compareTo(previousEnd) <= 0) throw new Exception("日期与已有经期记录重叠，请先调整原记录。");
+            previousEnd = record.optString("endDate");
+            if (previousEnd.isEmpty()) previousEnd = "9999-12-31";
+        }
+    }
     public synchronized JSONObject save(String kind, JSONObject input) throws Exception {
         JSONObject record = normalize(kind, input);
         JSONObject next = snapshot();
@@ -176,6 +208,7 @@ public final class RecordStore {
             else result.put(old);
         }
         if (!replaced) result.put(record);
+        if (kind.equals("periods")) validatePeriodRanges(result);
         next.put(kind, result);
         write(next);
         return record;
@@ -246,8 +279,8 @@ public final class RecordStore {
         if (imported.optInt("version") != 1) throw new Exception("不支持此备份版本。");
         JSONObject clean = new JSONObject().put("version", 1).put("templateDefaultsVersion",
             imported.has("templates") ? imported.optInt("templateDefaultsVersion", 0) : data.optInt("templateDefaultsVersion", 0));
-        for (String kind : new String[]{"meals", "workouts", "templates"}) {
-            JSONArray list = kind.equals("templates") && !imported.has(kind) ? data.getJSONArray(kind) : imported.getJSONArray(kind), result = new JSONArray();
+        for (String kind : new String[]{"meals", "workouts", "templates", "periods"}) {
+            JSONArray list = (kind.equals("templates") || kind.equals("periods")) && !imported.has(kind) ? data.getJSONArray(kind) : imported.getJSONArray(kind), result = new JSONArray();
             if (list.length() > 50000) throw new Exception("备份记录过多。");
             java.util.HashSet<String> ids = new java.util.HashSet<>();
             for (int i = 0; i < list.length(); i++) {
@@ -257,6 +290,7 @@ public final class RecordStore {
             }
             clean.put(kind, result);
         }
+        validatePeriodRanges(clean.getJSONArray("periods"));
         write(upgradeTemplateDefaults(clean));
     }
 }

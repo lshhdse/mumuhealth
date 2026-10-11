@@ -157,12 +157,17 @@ public class MainActivity extends Activity {
                         case "saveWorkout": reply(id, records.save("workouts", input), null); break;
                         case "saveWorkouts": reply(id, records.saveWorkouts(input.optJSONArray("records")), null); break;
                         case "saveTemplate": reply(id, records.save("templates", input), null); break;
+                        case "savePeriod": {
+                            if (!settings.publicSettings().optString("gender").equals("female")) throw new Exception("请先在我的 → 设置中选择女性。");
+                            reply(id, records.save("periods", input), null); break;
+                        }
                         case "delete": {
                             String kind = input.getString("kind");
-                            if (!kind.equals("meals") && !kind.equals("workouts") && !kind.equals("templates")) throw new Exception("记录类型无效。");
+                            if (!kind.equals("meals") && !kind.equals("workouts") && !kind.equals("templates") && !kind.equals("periods")) throw new Exception("记录类型无效。");
                             records.delete(kind, input.getString("id")); reply(id, true, null); break;
                         }
                         case "settings": reply(id, settings.save(input), null); break;
+                        case "profile": reply(id, settings.saveProfile(input), null); break;
                         case "appearance": {
                             JSONObject saved = settings.saveAppearance(input);
                             runOnUiThread(() -> { if (!isDestroyed()) applyNativeAppearance(); });
@@ -330,7 +335,8 @@ public class MainActivity extends Activity {
                     try (InputStream in = getContentResolver().openInputStream(intent.getData())) { imported = new JSONObject(AiClient.read(in, 100 * 1024 * 1024)); }
                     if (imported.optInt("version") != 1 || imported.optJSONArray("meals") == null || imported.optJSONArray("workouts") == null) throw new Exception("请选择沐沐健康导出的备份文件。");
                     pendingImport = imported;
-                    reply(id, new JSONObject().put("meals", imported.getJSONArray("meals").length()).put("workouts", imported.getJSONArray("workouts").length()), null);
+                    reply(id, new JSONObject().put("meals", imported.getJSONArray("meals").length()).put("workouts", imported.getJSONArray("workouts").length())
+                        .put("periods", imported.has("periods") ? imported.getJSONArray("periods").length() : JSONObject.NULL), null);
                 }
             } catch (Exception e) { reply(id, null, e.getMessage() == null ? "照片或文件处理失败，请重新选择。" : e.getMessage()); }
         });

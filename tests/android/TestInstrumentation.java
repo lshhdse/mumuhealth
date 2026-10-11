@@ -25,9 +25,10 @@ public class TestInstrumentation extends Instrumentation {
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
+            final String preferenceScope = "native_test_" + java.util.UUID.randomUUID().toString() + "_";
             Context scoped = new ContextWrapper(getTargetContext()) {
                 @Override public File getFilesDir() { File dir = new File(super.getFilesDir(), "native-test-" + System.currentTimeMillis()); dir.mkdirs(); return dir; }
-                @Override public SharedPreferences getSharedPreferences(String name, int mode) { return super.getSharedPreferences("native_test_" + name, mode); }
+                @Override public SharedPreferences getSharedPreferences(String name, int mode) { return super.getSharedPreferences(preferenceScope + name, mode); }
             };
             File testDir = scoped.getFilesDir();
             Context stable = new ContextWrapper(scoped) { @Override public File getFilesDir() { return testDir; } };
@@ -138,6 +139,10 @@ public class TestInstrumentation extends Instrumentation {
             check(new RecordStore(migrationContext).snapshot().getJSONArray("templates").length() == 7, "恢复旧模板备份自动升级且保留编辑");
             SettingsStore settings = new SettingsStore(stable);
             check(settings.publicSettings().getString("theme").equals("blue"), "旧设置默认蓝色主题");
+            check(settings.publicSettings().getString("gender").isEmpty(), "旧设置不推断性别");
+            settings.saveProfile(new JSONObject().put("gender", "female"));
+            check(new SettingsStore(stable).publicSettings().getString("gender").equals("female"), "性别持久化");
+            rejects(() -> settings.saveProfile(new JSONObject().put("gender", "invalid")), "拒绝未知性别选项");
             String testKey = "sk-NATIVE-TEST-ONLY-not-a-real-key";
             JSONObject config = new JSONObject().put("baseUrl", "https://example.invalid/v1").put("textModel", "fixture-text").put("visionModel", "fixture-vision").put("apiKey", testKey);
             settings.save(config);
@@ -152,9 +157,39 @@ public class TestInstrumentation extends Instrumentation {
             check(settings.apiKey().equals(testKey), "外观设置保留已保存密钥");
             settings.save(config);
             check(settings.publicSettings().getString("theme").equals("sage"), "AI 设置保留主题");
+            check(settings.publicSettings().getString("gender").equals("female"), "AI 与外观设置保留性别");
+            settings.saveProfile(new JSONObject().put("gender", "male"));
+            check(settings.apiKey().equals(testKey) && settings.publicSettings().getString("theme").equals("sage"), "性别设置不覆盖主题与密钥");
             rejects(() -> settings.saveAppearance(new JSONObject().put("theme", "unsupported")), "拒绝未知主题");
             rejects(() -> settings.save(new JSONObject(config.toString()).put("baseUrl", "http://example.invalid")), "拒绝 HTTP 服务地址");
             settings.save(config.put("clearKey", true)); check(settings.apiKey().isEmpty(), "密钥清除");
+            Context periodContext = new ContextWrapper(stable) {
+                @Override public File getFilesDir() { File dir = new File(testDir, "period-storage"); dir.mkdirs(); return dir; }
+            };
+            RecordStore periods = new RecordStore(periodContext);
+            check(periods.snapshot().getJSONArray("periods").length() == 0, "旧格式补充空经期数组");
+            JSONObject cycle = periods.save("periods", new JSONObject().put("startDate", "2024-02-27").put("endDate", "2024-03-02").put("note", "测试记录"));
+            check(new RecordStore(periodContext).snapshot().getJSONArray("periods").getJSONObject(0).getString("note").equals("测试记录"), "跨月经期持久化");
+            rejects(() -> periods.save("periods", new JSONObject().put("startDate", "2024-03-02").put("endDate", "2024-03-05")), "经期不能重叠");
+            rejects(() -> periods.save("periods", new JSONObject().put("startDate", "2024-02-30")), "经期日期严格校验");
+            rejects(() -> periods.save("periods", new JSONObject().put("startDate", java.time.LocalDate.now().plusDays(1).toString())), "拒绝未来经期开始日期");
+            rejects(() -> periods.save("periods", new JSONObject().put("startDate", "2024-03-05").put("endDate", "2024-03-04")), "拒绝倒序经期日期");
+            JSONObject ongoing = periods.save("periods", new JSONObject().put("startDate", "2024-04-01"));
+            check(ongoing.getString("endDate").isEmpty(), "支持未结束经期");
+            rejects(() -> periods.save("periods", new JSONObject().put("startDate", "2024-05-01")), "不能新增第二条未结束经期");
+            periods.save("periods", new JSONObject(ongoing.toString()).put("endDate", "2024-04-05"));
+            JSONObject periodBackup = periods.snapshot();
+            periods.restore(periodBackup);
+            check(periods.snapshot().getJSONArray("periods").length() == 2, "备份恢复包含经期");
+            JSONObject legacyPeriodBackup = periods.snapshot(); legacyPeriodBackup.remove("periods");
+            periods.restore(legacyPeriodBackup);
+            check(periods.snapshot().getJSONArray("periods").length() == 2, "旧备份恢复保留现有经期");
+            String beforeBadPeriodRestore = periods.snapshot().toString();
+            JSONObject overlappingBackup = periods.snapshot().put("periods", new JSONArray().put(cycle).put(new JSONObject(cycle.toString()).put("id", "overlapping")));
+            rejects(() -> periods.restore(overlappingBackup), "拒绝含重叠经期的备份");
+            check(periods.snapshot().toString().equals(beforeBadPeriodRestore), "备份校验失败不改写原记录");
+            periods.delete("periods", ongoing.getString("id"));
+            check(new RecordStore(periodContext).snapshot().getJSONArray("periods").length() == 1, "经期删除持久化");
             JSONObject ai = AiClient.parseEstimate("```json\n{\"foods\":[{\"name\":\"鸡蛋\",\"portion\":\"2 个\",\"kcal\":150},{\"name\":\"粥\",\"portion\":\"一碗\",\"kcal\":null}],\"assumptions\":\"常见份量\"}\n```");
             check(ai.getJSONArray("foods").length() == 2 && ai.getJSONArray("foods").getJSONObject(1).isNull("kcal"), "解析多模态返回与未知热量");
             rejects(() -> AiClient.parseEstimate("{\"foods\":[{\"name\":\"食物\",\"kcal\":-5}]}"), "拒绝异常 AI 热量");
