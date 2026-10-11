@@ -46,7 +46,7 @@ const themes = [
   { id: 'amber', name: '暖杏', caption: '温暖 · 朴素' }
 ];
 const themeId = value => themes.some(theme => theme.id === value) ? value : 'blue';
-let state = { page: 'today', settingsView: 'root', calendarView: 'week', calendarMonth: localDate().slice(0,7), calendarMetric: 'energy', date: localDate(), data: { version: 1, meals: [], workouts: [], templates: [] }, settings: {}, native: false, appVersion: '1.0.9' };
+let state = { page: 'today', settingsView: 'root', calendarView: 'week', calendarMonth: localDate().slice(0,7), calendarMetric: 'energy', date: localDate(), data: { version: 1, meals: [], workouts: [], templates: [] }, settings: {}, native: false, appVersion: '1.0.10' };
 let savingAppearance = false;
 let updateState = { status: 'idle', available: false };
 let dismissedUpdate = 0;
@@ -105,7 +105,7 @@ function previewData(recoverPending = false) {
   return data;
 }
 async function previewCall(method, payload) {
-  if (method === 'init') return { data: previewData(true), settings: previewConfig, native: false, appVersion: '1.0.9' };
+  if (method === 'init') return { data: previewData(true), settings: previewConfig, native: false, appVersion: '1.0.10' };
   if (method === 'appearance') { previewConfig = { ...previewConfig, theme: themeId(payload.theme) }; localStorage.setItem('mumu.preview.theme', previewConfig.theme); return previewConfig; }
   if (method === 'checkUpdate') return { status: 'preview', available: false };
   if (method === 'installUpdate') throw new Error('请在安卓 APP 中安装更新。');

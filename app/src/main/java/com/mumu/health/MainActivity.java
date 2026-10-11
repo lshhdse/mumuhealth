@@ -1,6 +1,7 @@
 package com.mumu.health;
 
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.ClipData;
 import android.graphics.Bitmap;
@@ -268,17 +269,32 @@ public class MainActivity extends Activity {
     private void pickPhoto(boolean camera, String id) {
         if (!reserve(id)) return;
         try {
-            Intent intent;
-            if (camera) {
-                Uri output = Uri.parse("content://com.mumu.health.photos/camera.jpg");
-                intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE).putExtra(MediaStore.EXTRA_OUTPUT, output);
-                intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                intent.setClipData(ClipData.newRawUri("photo", output));
-            } else {
-                intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE);
+            if (!camera) {
+                openGallery();
+                return;
             }
-            startActivityForResult(intent, camera ? CAMERA : PICK);
-        } catch (Exception e) { pendingId = null; reply(id, null, camera ? "未找到相机应用，请使用相册选择。" : "无法打开图片选择器。"); }
+            Uri output = Uri.parse("content://com.mumu.health.photos/camera.jpg");
+            Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE).putExtra(MediaStore.EXTRA_OUTPUT, output);
+            intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            intent.setClipData(ClipData.newRawUri("photo", output));
+            startActivityForResult(intent, CAMERA);
+        } catch (Exception e) { pendingId = null; reply(id, null, camera ? "未找到相机应用，请使用相册选择。" : "无法打开相册，请检查手机是否有可用的相册应用。"); }
+    }
+    private void openGallery() {
+        Intent[] choices = {
+            new Intent(Intent.ACTION_PICK).setDataAndType(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "image/*"),
+            new Intent(MediaStore.ACTION_PICK_IMAGES).setType("image/*"),
+            new Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE)
+        };
+        // Launch directly: package visibility checks can hide an otherwise usable gallery.
+        // ACTION_PICK_IMAGES also works on devices with a backported photo picker.
+        for (Intent choice : choices) {
+            try {
+                startActivityForResult(choice.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false), PICK);
+                return;
+            } catch (ActivityNotFoundException | SecurityException unavailable) { }
+        }
+        throw new ActivityNotFoundException("No image picker available");
     }
     private void startExport(String id, String content) {
         if (!reserve(id)) return;
@@ -299,7 +315,10 @@ public class MainActivity extends Activity {
         executor.execute(() -> {
             try {
                 if (request == CAMERA || request == PICK) {
-                    Uri uri = request == CAMERA ? Uri.fromFile(new File(getCacheDir(), "camera.jpg")) : intent.getData();
+                    Uri uri = request == CAMERA ? Uri.fromFile(new File(getCacheDir(), "camera.jpg")) : intent == null ? null : intent.getData();
+                    if (uri == null && intent != null && intent.getClipData() != null && intent.getClipData().getItemCount() > 0)
+                        uri = intent.getClipData().getItemAt(0).getUri();
+                    if (uri == null) throw new Exception("没有收到照片，请重新从相册选择。");
                     reply(id, copyPhoto(uri), null);
                 } else if (request == EXPORT) {
                     String content = pendingExport; pendingExport = null;

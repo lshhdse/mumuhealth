@@ -1,7 +1,7 @@
 param(
     [string]$JdkPath = 'D:\work\Java\ms-17.0.19',
     [switch]$Debug,
-    [int]$VersionCode = 10,
+    [int]$VersionCode = 11,
     [string]$VersionName = '',
     [switch]$RequireExistingSigning
 )
